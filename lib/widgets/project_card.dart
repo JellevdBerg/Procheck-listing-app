@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/project.dart';
 import '../models/task.dart';
+import '../providers/settings_provider.dart';
 import 'text_prompt_dialog.dart';
 
 /// The Hero tag a [ProjectCard]'s header shares with the thin bar header of
@@ -51,7 +52,7 @@ class _ProjectCardState extends State<ProjectCard> {
         type: MaterialType.transparency,
         child: Row(
           children: [
-            Icon(Icons.folder, color: theme.colorScheme.primary),
+            Icon(Icons.folder, color: accentPalette[widget.project.colorIndex]),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -149,7 +150,7 @@ class _ProjectCardState extends State<ProjectCard> {
                       Icon(
                         Icons.folder_outlined,
                         size: 18,
-                        color: theme.hintColor,
+                        color: accentPalette[widget.project.colorIndex],
                       ),
                       const SizedBox(width: 8),
                       Text(widget.project.name),

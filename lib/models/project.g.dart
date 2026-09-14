@@ -20,19 +20,25 @@ class ProjectAdapter extends TypeAdapter<Project> {
       id: fields[0] as String,
       name: fields[1] as String,
       createdAt: fields[2] as DateTime,
+      lastOpenedAt: fields[3] as DateTime?,
+      colorIndex: fields[4] as int,
     );
   }
 
   @override
   void write(BinaryWriter writer, Project obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
       ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(3)
+      ..write(obj.lastOpenedAt)
+      ..writeByte(4)
+      ..write(obj.colorIndex);
   }
 
   @override

@@ -28,6 +28,15 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
+  // The app now shows a brief splash screen before the home screen; advance
+  // past its timer (fake-async under the hood, so this doesn't slow the
+  // test down for real) before interacting with anything.
+  Future<void> pumpApp(WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
+    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> createTask(WidgetTester tester, String name) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
@@ -50,15 +59,32 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows empty state, then a created task can be checked off', (
+  testWidgets('shows empty state, then a created task appears in the list', (
     tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
 
     expect(find.textContaining('No tasks yet'), findsOneWidget);
 
     await createTask(tester, 'Buy milk');
+
+    expect(find.text('Buy milk'), findsOneWidget);
+  });
+
+  testWidgets('a project task can be checked off and stays checked', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await createProject(tester, 'Errands');
+    await tester.tap(find.text('Errands'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Buy milk');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Buy milk'), findsOneWidget);
 
@@ -73,16 +99,27 @@ void main() {
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
+    expect(find.text('Buy milk'), findsOneWidget);
     expect(tester.widget<Checkbox>(checkbox).value, isTrue);
   });
 
   testWidgets('checking off every subtask auto-checks the parent task', (
     tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
+    await pumpApp(tester);
+
+    // Created inside a project: an unfiled task would be auto-removed once
+    // fully checked (see the dedicated test below), which would defeat the
+    // point of this one.
+    await createProject(tester, 'Launch');
+    await tester.tap(find.text('Launch'));
     await tester.pumpAndSettle();
 
-    await createTask(tester, 'Ship it');
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Ship it');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
 
     // Expand the task to reveal the subtasks section.
     await tester.tap(find.text('Ship it'));
@@ -128,8 +165,7 @@ void main() {
   });
 
   testWidgets('deleting a task removes it from the list', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
 
     await createTask(tester, 'Temporary task');
     expect(find.text('Temporary task'), findsOneWidget);
@@ -149,11 +185,31 @@ void main() {
     expect(find.text('Temporary task'), findsNothing);
   });
 
+  testWidgets('checking off an unfiled task removes it automatically', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await createTask(tester, 'Quick one-off');
+    expect(find.text('Quick one-off'), findsOneWidget);
+
+    final checkbox = find.descendant(
+      of: find.ancestor(
+        of: find.text('Quick one-off'),
+        matching: find.byType(ListTile),
+      ),
+      matching: find.byType(Checkbox),
+    );
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Quick one-off'), findsNothing);
+  });
+
   testWidgets(
     'a new project shows as a featured card, hover reveals delete, tap opens it',
     (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
-      await tester.pumpAndSettle();
+      await pumpApp(tester);
 
       await createProject(tester, 'Groceries');
 

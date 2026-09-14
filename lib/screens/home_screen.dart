@@ -6,6 +6,7 @@ import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../widgets/app_logo.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/page_transitions.dart';
 import '../widgets/project_card.dart';
@@ -44,7 +45,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return DropAwayOnPush(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Procheck'),
+          title: const Text('ProCheck'),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings_outlined),
@@ -52,6 +53,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(right: 16, left: 4),
+              child: AppLogo(size: 32),
             ),
           ],
           bottom: TabBar(
@@ -66,6 +71,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           controller: _tabController,
           children: const [_ProjectsTab(), _TemplatesTab()],
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: _tabController.index == 0
             ? FloatingActionButton(
                 onPressed: () => _showProjectsTabActions(context),
@@ -103,13 +109,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               title: const Text('New project'),
               onTap: () async {
                 Navigator.of(sheetContext).pop();
-                final name = await showTextPromptDialog(
+                final result = await showProjectPromptDialog(
                   context,
                   title: 'New project',
                   confirmLabel: 'Create',
                 );
-                if (name != null) {
-                  ref.read(projectsProvider.notifier).addProject(name);
+                if (result != null) {
+                  final (name, colorIndex) = result;
+                  ref
+                      .read(projectsProvider.notifier)
+                      .addProject(name, colorIndex: colorIndex);
                 }
               },
             ),
@@ -123,9 +132,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 class _ProjectsTab extends ConsumerWidget {
   const _ProjectsTab();
 
-  static const _featuredCount = 4;
   static const _featuredCardHeight = 280.0;
   static const _featuredCardMinWidth = 240.0;
+  static const _gridPadding = 16.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -141,28 +150,36 @@ class _ProjectsTab extends ConsumerWidget {
       );
     }
 
-    final featuredProjects = projects.take(_featuredCount).toList();
-    final otherProjects = projects.skip(_featuredCount).toList();
+    void openProject(String projectId) {
+      ref.read(projectsProvider.notifier).touchProject(projectId);
+      pushSlideIn(
+        context,
+        ProjectDetailScreen(projectId: projectId),
+        reduceMotion: reduceMotion,
+      );
+    }
 
-    void openProject(String projectId) => pushSlideIn(
-      context,
-      ProjectDetailScreen(projectId: projectId),
-      reduceMotion: reduceMotion,
-    );
+    return LayoutBuilder(
+      builder: (context, outerConstraints) {
+        // How many featured cards fit in one row is what "on full display"
+        // means here: it grows with the window instead of a fixed count.
+        final availableWidth = outerConstraints.maxWidth - _gridPadding * 2;
+        final crossAxisCount = projects.isEmpty
+            ? 1
+            : (availableWidth / _featuredCardMinWidth).floor().clamp(
+                1,
+                projects.length,
+              );
+        final featuredProjects = projects.take(crossAxisCount).toList();
+        final otherProjects = projects.skip(crossAxisCount).toList();
 
-    return ListView(
-      children: [
-        if (featuredProjects.isNotEmpty) ...[
-          const _SectionHeader('Projects'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount =
-                    (constraints.maxWidth / _featuredCardMinWidth)
-                        .floor()
-                        .clamp(1, _featuredCount);
-                return GridView.builder(
+        return ListView(
+          children: [
+            if (featuredProjects.isNotEmpty) ...[
+              const _SectionHeader('Projects'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
+                child: GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -186,41 +203,41 @@ class _ProjectsTab extends ConsumerWidget {
                           .deleteProject(project.id),
                     );
                   },
-                );
-              },
-            ),
-          ),
-        ],
-        if (otherProjects.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final project in otherProjects)
-                  ProjectCard(
-                    project: project,
-                    tasks: tasks
-                        .where((t) => t.projectId == project.id)
-                        .toList(),
-                    onTap: () => openProject(project.id),
-                    onDelete: () => ref
-                        .read(projectsProvider.notifier)
-                        .deleteProject(project.id),
-                  ),
-              ],
-            ),
-          ),
-        ],
-        if (unfiledTasks.isNotEmpty) ...[
-          const _SectionHeader('Tasks'),
-          for (final task in unfiledTasks)
-            TaskTile(key: ValueKey(task.id), task: task),
-        ],
-        const SizedBox(height: 80),
-      ],
+                ),
+              ),
+            ],
+            if (otherProjects.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final project in otherProjects)
+                      ProjectCard(
+                        project: project,
+                        tasks: tasks
+                            .where((t) => t.projectId == project.id)
+                            .toList(),
+                        onTap: () => openProject(project.id),
+                        onDelete: () => ref
+                            .read(projectsProvider.notifier)
+                            .deleteProject(project.id),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            if (unfiledTasks.isNotEmpty) ...[
+              const _SectionHeader('Tasks'),
+              for (final task in unfiledTasks)
+                TaskTile(key: ValueKey(task.id), task: task),
+            ],
+            const SizedBox(height: 80),
+          ],
+        );
+      },
     );
   }
 }

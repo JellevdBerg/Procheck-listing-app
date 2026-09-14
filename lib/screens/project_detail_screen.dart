@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/project_card.dart';
@@ -43,10 +44,7 @@ class ProjectDetailScreen extends ConsumerWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.folder,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(Icons.folder, color: accentPalette[project.colorIndex]),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
@@ -63,17 +61,19 @@ class ProjectDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Rename project',
+            tooltip: 'Edit project',
             onPressed: () async {
-              final name = await showTextPromptDialog(
+              final result = await showProjectPromptDialog(
                 context,
-                title: 'Rename project',
+                title: 'Edit project',
                 initialValue: project.name,
+                initialColorIndex: project.colorIndex,
               );
-              if (name != null) {
-                ref
-                    .read(projectsProvider.notifier)
-                    .renameProject(projectId, name);
+              if (result != null) {
+                final (name, colorIndex) = result;
+                final notifier = ref.read(projectsProvider.notifier);
+                notifier.renameProject(projectId, name);
+                notifier.setProjectColor(projectId, colorIndex);
               }
             },
           ),
