@@ -32,25 +32,39 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
-      - name: Package build output
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath procheck-windows.zip
+      - name: Compute version
+        id: version
         shell: pwsh
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$' | Select-Object -First 1
+          $pubspecVersion = $versionLine.Matches[0].Groups[1].Value.Trim()
+          $semver = $pubspecVersion.Split('+')[0]
+          $tag = "v$semver-build.$($env:GITHUB_RUN_NUMBER)"
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "semver=$semver" >> $env:GITHUB_OUTPUT
+
+      - name: Package build output
+        id: package
+        shell: pwsh
+        run: |
+          $zipName = "procheck-windows-${{ steps.version.outputs.tag }}.zip"
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath $zipName
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: procheck-windows
-          path: procheck-windows.zip
+          name: procheck-windows-${{ steps.version.outputs.tag }}
+          path: ${{ steps.package.outputs.zip_name }}
           retention-days: 30
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: windows-latest
-          name: "Procheck (Windows) - latest build"
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Procheck v${{ steps.version.outputs.semver }} (build ${{ github.run_number }})"
           body: |
-            Automatically built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
+            Built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
 
-            Download `procheck-windows.zip` below, unzip it, and run `procheck.exe`.
-            This release is overwritten on every push, so it always tracks the latest commit.
+            Download the zip below, unzip it, and run `procheck.exe`.
           prerelease: true
-          files: procheck-windows.zip
+          files: ${{ steps.package.outputs.zip_name }}
