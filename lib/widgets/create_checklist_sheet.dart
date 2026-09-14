@@ -34,8 +34,7 @@ class _CreateChecklistSheet extends ConsumerStatefulWidget {
       _CreateChecklistSheetState();
 }
 
-class _CreateChecklistSheetState
-    extends ConsumerState<_CreateChecklistSheet> {
+class _CreateChecklistSheetState extends ConsumerState<_CreateChecklistSheet> {
   final _nameController = TextEditingController();
   ChecklistTemplate? _selectedTemplate;
   String? _selectedFolderId;

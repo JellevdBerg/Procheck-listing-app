@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/checklists_provider.dart';
 import '../providers/folders_provider.dart';
 import '../widgets/checklist_item_tile.dart';
+import '../widgets/page_transitions.dart';
 import '../widgets/text_prompt_dialog.dart';
 
 class ChecklistDetailScreen extends ConsumerStatefulWidget {
@@ -16,8 +17,7 @@ class ChecklistDetailScreen extends ConsumerStatefulWidget {
       _ChecklistDetailScreenState();
 }
 
-class _ChecklistDetailScreenState
-    extends ConsumerState<ChecklistDetailScreen> {
+class _ChecklistDetailScreenState extends ConsumerState<ChecklistDetailScreen> {
   final _newItemController = TextEditingController();
 
   @override
@@ -42,127 +42,129 @@ class _ChecklistDetailScreenState
     final notifier = ref.read(checklistsProvider.notifier);
     final folders = ref.watch(foldersProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(checklist.name),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              switch (value) {
-                case 'rename':
-                  final name = await showTextPromptDialog(
-                    context,
-                    title: 'Rename checklist',
-                    initialValue: checklist.name,
-                  );
-                  if (name != null) {
-                    notifier.renameChecklist(checklist.id, name);
-                  }
-                  break;
-                case 'move':
-                  final choice = await _pickFolder(
-                    context,
-                    folders.map((f) => (f.id, f.name)).toList(),
-                    checklist.folderId,
-                  );
-                  if (choice != null) {
-                    notifier.moveToFolder(checklist.id, choice.folderId);
-                  }
-                  break;
-                case 'reset':
-                  notifier.resetProgress(checklist.id);
-                  break;
-                case 'delete':
-                  final confirmed = await showConfirmDialog(
-                    context,
-                    title: 'Delete checklist?',
-                    message: 'This cannot be undone.',
-                  );
-                  if (confirmed) {
-                    notifier.deleteChecklist(checklist.id);
-                    if (context.mounted) Navigator.of(context).pop();
-                  }
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename')),
-              PopupMenuItem(value: 'move', child: Text('Move to folder')),
-              PopupMenuItem(value: 'reset', child: Text('Reset progress')),
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: checklist.items.isEmpty ? 0 : checklist.progress,
-                      minHeight: 8,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${checklist.completedCount}/${checklist.items.length}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+    return DropAwayOnPush(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(checklist.name),
+          actions: [
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                switch (value) {
+                  case 'rename':
+                    final name = await showTextPromptDialog(
+                      context,
+                      title: 'Rename checklist',
+                      initialValue: checklist.name,
+                    );
+                    if (name != null) {
+                      notifier.renameChecklist(checklist.id, name);
+                    }
+                    break;
+                  case 'move':
+                    final choice = await _pickFolder(
+                      context,
+                      folders.map((f) => (f.id, f.name)).toList(),
+                      checklist.folderId,
+                    );
+                    if (choice != null) {
+                      notifier.moveToFolder(checklist.id, choice.folderId);
+                    }
+                    break;
+                  case 'reset':
+                    notifier.resetProgress(checklist.id);
+                    break;
+                  case 'delete':
+                    final confirmed = await showConfirmDialog(
+                      context,
+                      title: 'Delete checklist?',
+                      message: 'This cannot be undone.',
+                    );
+                    if (confirmed) {
+                      notifier.deleteChecklist(checklist.id);
+                      if (context.mounted) Navigator.of(context).pop();
+                    }
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'rename', child: Text('Rename')),
+                PopupMenuItem(value: 'move', child: Text('Move to folder')),
+                PopupMenuItem(value: 'reset', child: Text('Reset progress')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
             ),
-          ),
-          Expanded(
-            child: checklist.items.isEmpty
-                ? Center(
-                    child: Text(
-                      'No items yet. Add one below.',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: checklist.items.length,
-                    itemBuilder: (context, index) {
-                      final item = checklist.items[index];
-                      return ChecklistItemTile(
-                        key: ValueKey(item.id),
-                        checklistId: checklist.id,
-                        item: item,
-                      );
-                    },
-                  ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          ],
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _newItemController,
-                      decoration: const InputDecoration(
-                        hintText: 'Add an item',
-                        border: OutlineInputBorder(),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: checklist.items.isEmpty ? 0 : checklist.progress,
+                        minHeight: 8,
                       ),
-                      onSubmitted: (_) => _addItem(checklist.id, notifier),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    icon: const Icon(Icons.add),
-                    onPressed: () => _addItem(checklist.id, notifier),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${checklist.completedCount}/${checklist.items.length}',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: checklist.items.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No items yet. Add one below.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: checklist.items.length,
+                      itemBuilder: (context, index) {
+                        final item = checklist.items[index];
+                        return ChecklistItemTile(
+                          key: ValueKey(item.id),
+                          checklistId: checklist.id,
+                          item: item,
+                        );
+                      },
+                    ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _newItemController,
+                        decoration: const InputDecoration(
+                          hintText: 'Add an item',
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _addItem(checklist.id, notifier),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      icon: const Icon(Icons.add),
+                      onPressed: () => _addItem(checklist.id, notifier),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -200,8 +202,7 @@ class _ChecklistDetailScreenState
           ),
           for (final (id, name) in folders)
             SimpleDialogOption(
-              onPressed: () =>
-                  Navigator.of(context).pop(_FolderChoice(id)),
+              onPressed: () => Navigator.of(context).pop(_FolderChoice(id)),
               child: Row(
                 children: [
                   if (currentFolderId == id)

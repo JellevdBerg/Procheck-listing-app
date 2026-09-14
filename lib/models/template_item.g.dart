@@ -16,10 +16,7 @@ class TemplateItemAdapter extends TypeAdapter<TemplateItem> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return TemplateItem(
-      id: fields[0] as String,
-      title: fields[1] as String,
-    );
+    return TemplateItem(id: fields[0] as String, title: fields[1] as String);
   }
 
   @override

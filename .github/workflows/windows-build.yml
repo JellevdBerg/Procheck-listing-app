@@ -61,7 +61,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "Procheck v${{ steps.version.outputs.semver }} (build ${{ github.run_number }})"
+          name: "ProCheck v${{ steps.version.outputs.semver }} (build ${{ github.run_number }})"
           body: |
             Built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
 

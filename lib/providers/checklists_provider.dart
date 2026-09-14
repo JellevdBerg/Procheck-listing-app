@@ -213,9 +213,7 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
     if (checklist == null) return;
     for (final item in checklist.items) {
       if (item.subtasks.any((s) => s.id == subtaskId)) {
-        item.subtasks = item.subtasks
-            .where((s) => s.id != subtaskId)
-            .toList();
+        item.subtasks = item.subtasks.where((s) => s.id != subtaskId).toList();
         if (item.subtasks.isNotEmpty) {
           item.isChecked = item.subtasks.every((s) => s.isChecked);
         }

@@ -98,10 +98,7 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Items',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            child: Text('Items', style: Theme.of(context).textTheme.labelLarge),
           ),
           Expanded(
             child: _items.isEmpty
