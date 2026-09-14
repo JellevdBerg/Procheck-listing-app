@@ -5,6 +5,7 @@ import '../providers/checklists_provider.dart';
 import '../providers/folders_provider.dart';
 import '../widgets/checklist_tile.dart';
 import '../widgets/create_checklist_sheet.dart';
+import '../widgets/page_transitions.dart';
 import '../widgets/text_prompt_dialog.dart';
 import 'checklist_detail_screen.dart';
 
@@ -32,73 +33,72 @@ class FolderDetailScreen extends ConsumerWidget {
         .where((c) => c.folderId == folderId)
         .toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(folder.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Rename folder',
-            onPressed: () async {
-              final name = await showTextPromptDialog(
-                context,
-                title: 'Rename folder',
-                initialValue: folder.name,
-              );
-              if (name != null) {
-                ref.read(foldersProvider.notifier).renameFolder(
-                  folderId,
-                  name,
+    return DropAwayOnPush(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(folder.name),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Rename folder',
+              onPressed: () async {
+                final name = await showTextPromptDialog(
+                  context,
+                  title: 'Rename folder',
+                  initialValue: folder.name,
                 );
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Delete folder',
-            onPressed: () async {
-              final confirmed = await showConfirmDialog(
-                context,
-                title: 'Delete folder?',
-                message:
-                    'Checklists inside "${folder.name}" will move to Unfiled. This cannot be undone.',
-              );
-              if (confirmed) {
-                ref.read(foldersProvider.notifier).deleteFolder(folderId);
-                if (context.mounted) Navigator.of(context).pop();
-              }
-            },
-          ),
-        ],
-      ),
-      body: checklists.isEmpty
-          ? Center(
-              child: Text(
-                'No checklists in this folder yet.',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            )
-          : ListView(
-              children: [
-                for (final checklist in checklists)
-                  ChecklistTile(
-                    checklist: checklist,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            ChecklistDetailScreen(checklistId: checklist.id),
-                      ),
-                    ),
-                    onDelete: () => ref
-                        .read(checklistsProvider.notifier)
-                        .deleteChecklist(checklist.id),
-                  ),
-              ],
+                if (name != null) {
+                  ref
+                      .read(foldersProvider.notifier)
+                      .renameFolder(folderId, name);
+                }
+              },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            showCreateChecklistSheet(context, initialFolderId: folderId),
-        child: const Icon(Icons.add),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete folder',
+              onPressed: () async {
+                final confirmed = await showConfirmDialog(
+                  context,
+                  title: 'Delete folder?',
+                  message:
+                      'Checklists inside "${folder.name}" will move to Unfiled. This cannot be undone.',
+                );
+                if (confirmed) {
+                  ref.read(foldersProvider.notifier).deleteFolder(folderId);
+                  if (context.mounted) Navigator.of(context).pop();
+                }
+              },
+            ),
+          ],
+        ),
+        body: checklists.isEmpty
+            ? Center(
+                child: Text(
+                  'No checklists in this folder yet.',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              )
+            : ListView(
+                children: [
+                  for (final checklist in checklists)
+                    ChecklistTile(
+                      checklist: checklist,
+                      onTap: () => pushSlideIn(
+                        context,
+                        ChecklistDetailScreen(checklistId: checklist.id),
+                      ),
+                      onDelete: () => ref
+                          .read(checklistsProvider.notifier)
+                          .deleteChecklist(checklist.id),
+                    ),
+                ],
+              ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () =>
+              showCreateChecklistSheet(context, initialFolderId: folderId),
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }

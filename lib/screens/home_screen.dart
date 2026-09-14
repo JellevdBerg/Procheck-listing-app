@@ -7,6 +7,8 @@ import '../providers/folders_provider.dart';
 import '../providers/templates_provider.dart';
 import '../widgets/checklist_tile.dart';
 import '../widgets/create_checklist_sheet.dart';
+import '../widgets/folder_card.dart';
+import '../widgets/page_transitions.dart';
 import '../widgets/text_prompt_dialog.dart';
 import 'checklist_detail_screen.dart';
 import 'folder_detail_screen.dart';
@@ -38,34 +40,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Procheck'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Checklists'),
-            Tab(text: 'Templates'),
-          ],
+    return DropAwayOnPush(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Procheck'),
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Checklists'),
+              Tab(text: 'Templates'),
+            ],
+          ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [_ChecklistsTab(), _TemplatesTab()],
-      ),
-      floatingActionButton: _tabController.index == 0
-          ? FloatingActionButton(
-              onPressed: () => _showChecklistTabActions(context),
-              child: const Icon(Icons.add),
-            )
-          : FloatingActionButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const TemplateEditorScreen(),
+        body: TabBarView(
+          controller: _tabController,
+          children: const [_ChecklistsTab(), _TemplatesTab()],
+        ),
+        floatingActionButton: _tabController.index == 0
+            ? FloatingActionButton(
+                onPressed: () => _showChecklistTabActions(context),
+                child: const Icon(Icons.add),
+              )
+            : FloatingActionButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TemplateEditorScreen(),
+                  ),
                 ),
+                child: const Icon(Icons.add),
               ),
-              child: const Icon(Icons.add),
-            ),
+      ),
     );
   }
 
@@ -109,6 +113,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 class _ChecklistsTab extends ConsumerWidget {
   const _ChecklistsTab();
 
+  static const _featuredCount = 4;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final folders = ref.watch(foldersProvider);
@@ -120,40 +126,73 @@ class _ChecklistsTab extends ConsumerWidget {
     if (folders.isEmpty && unfiledChecklists.isEmpty) {
       return const _EmptyState(
         icon: Icons.checklist_rtl_rounded,
-        message:
-            'No checklists yet.\nTap + to create your first checklist or folder.',
+        message: 'No checklists yet.\nTap + to create your first checklist or folder.',
       );
     }
 
+    final featuredFolders = folders.take(_featuredCount).toList();
+    final otherFolders = folders.skip(_featuredCount).toList();
+
+    void openFolder(String folderId) =>
+        pushSlideIn(context, FolderDetailScreen(folderId: folderId));
+
     return ListView(
       children: [
-        if (folders.isNotEmpty) ...[
+        if (featuredFolders.isNotEmpty) ...[
           const _SectionHeader('Folders'),
-          for (final folder in folders)
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.folder)),
-              title: Text(folder.name),
-              subtitle: Text(
-                '${checklists.where((c) => c.folderId == folder.id).length} checklist(s)',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => FolderDetailScreen(folderId: folder.id),
-                ),
-              ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                for (final folder in featuredFolders)
+                  FolderCard(
+                    folder: folder,
+                    featured: true,
+                    checklists: checklists
+                        .where((c) => c.folderId == folder.id)
+                        .toList(),
+                    onTap: () => openFolder(folder.id),
+                    onDelete: () => ref
+                        .read(foldersProvider.notifier)
+                        .deleteFolder(folder.id),
+                  ),
+              ],
             ),
+          ),
+        ],
+        if (otherFolders.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final folder in otherFolders)
+                  FolderCard(
+                    folder: folder,
+                    checklists: checklists
+                        .where((c) => c.folderId == folder.id)
+                        .toList(),
+                    onTap: () => openFolder(folder.id),
+                    onDelete: () => ref
+                        .read(foldersProvider.notifier)
+                        .deleteFolder(folder.id),
+                  ),
+              ],
+            ),
+          ),
         ],
         if (unfiledChecklists.isNotEmpty) ...[
           const _SectionHeader('Checklists'),
           for (final checklist in unfiledChecklists)
             ChecklistTile(
               checklist: checklist,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      ChecklistDetailScreen(checklistId: checklist.id),
-                ),
+              onTap: () => pushSlideIn(
+                context,
+                ChecklistDetailScreen(checklistId: checklist.id),
               ),
               onDelete: () => ref
                   .read(checklistsProvider.notifier)
@@ -176,8 +215,7 @@ class _TemplatesTab extends ConsumerWidget {
     if (templates.isEmpty) {
       return const _EmptyState(
         icon: Icons.copy_all_outlined,
-        message:
-            'No templates yet.\nTemplates let you reuse a predefined set of checklist items.',
+        message: 'No templates yet.\nTemplates let you reuse a predefined set of checklist items.',
       );
     }
 
@@ -217,9 +255,8 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
         title,
-        style: Theme.of(
-          context,
-        ).textTheme.labelLarge?.copyWith(color: Theme.of(context).hintColor),
+        style: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(color: Theme.of(context).hintColor),
       ),
     );
   }

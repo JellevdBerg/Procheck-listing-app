@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:procheck/data/hive_setup.dart';
 import 'package:procheck/main.dart';
 import 'package:procheck/widgets/checklist_tile.dart';
+import 'package:procheck/widgets/folder_card.dart';
 
 void main() {
   late Directory tempDir;
@@ -34,6 +35,17 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, name);
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> createFolder(WidgetTester tester, String name) async {
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New folder'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), name);
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
   }
@@ -154,4 +166,42 @@ void main() {
 
     expect(find.text('Old checklist'), findsNothing);
   });
+
+  testWidgets(
+    'a new folder shows as a featured card, hover reveals delete, tap opens it',
+    (tester) async {
+      await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
+      await tester.pumpAndSettle();
+
+      await createFolder(tester, 'Groceries');
+
+      final cardFinder = find.ancestor(
+        of: find.text('Groceries'),
+        matching: find.byType(FolderCard),
+      );
+      expect(cardFinder, findsOneWidget);
+
+      final deleteFinder = find.descendant(
+        of: cardFinder,
+        matching: find.byIcon(Icons.delete_outline),
+      );
+      expect(deleteFinder, findsNothing);
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(gesture.removePointer);
+      await gesture.addPointer(location: Offset.zero);
+      await tester.pumpAndSettle();
+
+      await gesture.moveTo(tester.getCenter(cardFinder));
+      await tester.pumpAndSettle();
+
+      expect(deleteFinder, findsOneWidget);
+
+      // Tapping the card itself (not the delete button) opens the folder.
+      await tester.tap(find.text('Groceries'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No checklists in this folder yet.'), findsOneWidget);
+    },
+  );
 }
