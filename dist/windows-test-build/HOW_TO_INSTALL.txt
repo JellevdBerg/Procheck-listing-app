@@ -1,0 +1,45 @@
+Procheck - Windows test build
+==============================
+
+This is a self-contained web build of Procheck. Flutter's web output can't
+be opened by double-clicking index.html (browsers block it for security
+reasons), so it needs to be served by a tiny local web server first - then
+you can install it as a real desktop app.
+
+STEP 1 - Unzip
+--------------
+Unzip this folder anywhere on your PC.
+
+STEP 2 - Start the local server
+--------------------------------
+Double-click "Run Procheck.bat" in this folder.
+A black window will open and stay running - leave it open.
+
+(If it says Python isn't found: install Python from python.org, or if you
+have Node.js installed, open a terminal in this folder and run
+"npx serve ." instead, then use whatever port it prints.)
+
+STEP 3 - Open it and install it as an app
+------------------------------------------
+Open Edge or Chrome and go to:
+
+    http://localhost:8765
+
+Once it loads, look in the address bar for an install icon (a little
+computer-with-arrow icon on the right side), or open the browser's "..."
+menu -> Apps -> Install this site as an app.
+
+That creates a real app window (no browser tabs/toolbar) with its own
+taskbar icon and Start Menu entry, just like a native app. You can pin it
+to your taskbar or Start Menu from there.
+
+Notes
+-----
+- Your checklists/folders/templates are saved locally in the browser
+  profile you installed it from (via IndexedDB) - they'll persist between
+  launches as long as you don't clear that site's data.
+- To stop the local server, go back to the "Run Procheck.bat" window and
+  press Ctrl+C.
+- This is a test build for trying the app out. A genuine native Windows
+  .exe build is also possible later, but has to be compiled on a Windows
+  machine with Flutter + Visual Studio's C++ build tools installed.
