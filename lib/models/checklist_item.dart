@@ -8,7 +8,9 @@ class ChecklistItem extends HiveObject {
     required this.id,
     required this.title,
     this.isChecked = false,
-  });
+    this.notes,
+    List<ChecklistItem>? subtasks,
+  }) : subtasks = subtasks ?? [];
 
   @HiveField(0)
   String id;
@@ -19,11 +21,17 @@ class ChecklistItem extends HiveObject {
   @HiveField(2)
   bool isChecked;
 
-  ChecklistItem copyWith({String? title, bool? isChecked}) {
-    return ChecklistItem(
-      id: id,
-      title: title ?? this.title,
-      isChecked: isChecked ?? this.isChecked,
-    );
-  }
+  @HiveField(3)
+  String? notes;
+
+  @HiveField(4)
+  List<ChecklistItem> subtasks;
+
+  bool get hasSubtasks => subtasks.isNotEmpty;
+
+  int get completedSubtaskCount =>
+      subtasks.where((subtask) => subtask.isChecked).length;
+
+  double get subtaskProgress =>
+      subtasks.isEmpty ? 0 : completedSubtaskCount / subtasks.length;
 }

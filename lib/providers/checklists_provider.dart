@@ -37,6 +37,11 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
     ];
   }
 
+  void _persist(Checklist checklist) {
+    unawaited(checklist.save());
+    _replace(checklist);
+  }
+
   Checklist addBlankChecklist({required String name, String? folderId}) {
     return _addChecklist(name: name, folderId: folderId, items: const []);
   }
@@ -83,16 +88,14 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
     final checklist = _box.get(checklistId);
     if (checklist == null) return;
     checklist.name = name;
-    unawaited(checklist.save());
-    _replace(checklist);
+    _persist(checklist);
   }
 
   void moveToFolder(String checklistId, String? folderId) {
     final checklist = _box.get(checklistId);
     if (checklist == null) return;
     checklist.folderId = folderId;
-    unawaited(checklist.save());
-    _replace(checklist);
+    _persist(checklist);
   }
 
   void deleteChecklist(String checklistId) {
@@ -100,17 +103,31 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
     state = state.where((c) => c.id != checklistId).toList();
   }
 
+  /// Toggling a top-level item with subtasks cascades the new value down to
+  /// every subtask. Toggling a subtask instead recomputes its parent: the
+  /// parent is checked exactly when all of its subtasks are.
   void toggleItem(String checklistId, String itemId) {
     final checklist = _box.get(checklistId);
     if (checklist == null) return;
     for (final item in checklist.items) {
       if (item.id == itemId) {
-        item.isChecked = !item.isChecked;
-        break;
+        final newValue = !item.isChecked;
+        item.isChecked = newValue;
+        for (final subtask in item.subtasks) {
+          subtask.isChecked = newValue;
+        }
+        _persist(checklist);
+        return;
+      }
+      for (final subtask in item.subtasks) {
+        if (subtask.id == itemId) {
+          subtask.isChecked = !subtask.isChecked;
+          item.isChecked = item.subtasks.every((s) => s.isChecked);
+          _persist(checklist);
+          return;
+        }
       }
     }
-    unawaited(checklist.save());
-    _replace(checklist);
   }
 
   void addItem(String checklistId, String title) {
@@ -120,31 +137,92 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
       ...checklist.items,
       ChecklistItem(id: const Uuid().v4(), title: title),
     ];
-    unawaited(checklist.save());
-    _replace(checklist);
+    _persist(checklist);
   }
 
+  /// Works for both top-level items and subtasks.
   void renameItem(String checklistId, String itemId, String title) {
     final checklist = _box.get(checklistId);
     if (checklist == null) return;
     for (final item in checklist.items) {
       if (item.id == itemId) {
         item.title = title;
-        break;
+        _persist(checklist);
+        return;
+      }
+      for (final subtask in item.subtasks) {
+        if (subtask.id == itemId) {
+          subtask.title = title;
+          _persist(checklist);
+          return;
+        }
       }
     }
-    unawaited(checklist.save());
-    _replace(checklist);
   }
 
+  /// Works for both top-level items and subtasks.
+  void setItemNotes(String checklistId, String itemId, String? notes) {
+    final checklist = _box.get(checklistId);
+    if (checklist == null) return;
+    for (final item in checklist.items) {
+      if (item.id == itemId) {
+        item.notes = notes;
+        _persist(checklist);
+        return;
+      }
+      for (final subtask in item.subtasks) {
+        if (subtask.id == itemId) {
+          subtask.notes = notes;
+          _persist(checklist);
+          return;
+        }
+      }
+    }
+  }
+
+  /// Removes a top-level item (and any subtasks it has).
   void removeItem(String checklistId, String itemId) {
     final checklist = _box.get(checklistId);
     if (checklist == null) return;
     checklist.items = checklist.items
         .where((item) => item.id != itemId)
         .toList();
-    unawaited(checklist.save());
-    _replace(checklist);
+    _persist(checklist);
+  }
+
+  void addSubtask(String checklistId, String parentItemId, String title) {
+    final checklist = _box.get(checklistId);
+    if (checklist == null) return;
+    for (final item in checklist.items) {
+      if (item.id == parentItemId) {
+        item.subtasks = [
+          ...item.subtasks,
+          ChecklistItem(id: const Uuid().v4(), title: title),
+        ];
+        // A freshly-added, unchecked subtask means the parent can no longer
+        // be considered done.
+        item.isChecked = item.subtasks.every((s) => s.isChecked);
+        _persist(checklist);
+        return;
+      }
+    }
+  }
+
+  void removeSubtask(String checklistId, String subtaskId) {
+    final checklist = _box.get(checklistId);
+    if (checklist == null) return;
+    for (final item in checklist.items) {
+      if (item.subtasks.any((s) => s.id == subtaskId)) {
+        item.subtasks = item.subtasks
+            .where((s) => s.id != subtaskId)
+            .toList();
+        if (item.subtasks.isNotEmpty) {
+          item.isChecked = item.subtasks.every((s) => s.isChecked);
+        }
+        _persist(checklist);
+        return;
+      }
+    }
   }
 
   void resetProgress(String checklistId) {
@@ -152,9 +230,11 @@ class ChecklistsNotifier extends StateNotifier<List<Checklist>> {
     if (checklist == null) return;
     for (final item in checklist.items) {
       item.isChecked = false;
+      for (final subtask in item.subtasks) {
+        subtask.isChecked = false;
+      }
     }
-    unawaited(checklist.save());
-    _replace(checklist);
+    _persist(checklist);
   }
 
   void unfileChecklistsInFolder(String folderId) {

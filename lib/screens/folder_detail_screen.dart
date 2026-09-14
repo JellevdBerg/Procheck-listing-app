@@ -89,6 +89,9 @@ class FolderDetailScreen extends ConsumerWidget {
                             ChecklistDetailScreen(checklistId: checklist.id),
                       ),
                     ),
+                    onDelete: () => ref
+                        .read(checklistsProvider.notifier)
+                        .deleteChecklist(checklist.id),
                   ),
               ],
             ),
