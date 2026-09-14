@@ -21,15 +21,23 @@ Future<void> setUpHive({String? testDirectoryPath}) async {
     await Hive.initFlutter();
   }
 
-  Hive.registerAdapter(ChecklistItemAdapter());
-  Hive.registerAdapter(TemplateItemAdapter());
-  Hive.registerAdapter(ChecklistTemplateAdapter());
-  Hive.registerAdapter(FolderAdapter());
-  Hive.registerAdapter(ChecklistAdapter());
+  _registerAdapter(ChecklistItemAdapter());
+  _registerAdapter(TemplateItemAdapter());
+  _registerAdapter(ChecklistTemplateAdapter());
+  _registerAdapter(FolderAdapter());
+  _registerAdapter(ChecklistAdapter());
 
   await Future.wait([
     Hive.openBox<Folder>(folderBoxName),
     Hive.openBox<Checklist>(checklistBoxName),
     Hive.openBox<ChecklistTemplate>(templateBoxName),
   ]);
+}
+
+/// Re-running [setUpHive] (e.g. once per widget test) must not re-register
+/// an adapter for a typeId that's already registered.
+void _registerAdapter<T>(TypeAdapter<T> adapter) {
+  if (!Hive.isAdapterRegistered(adapter.typeId)) {
+    Hive.registerAdapter(adapter);
+  }
 }

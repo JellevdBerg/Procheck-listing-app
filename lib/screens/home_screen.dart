@@ -155,6 +155,9 @@ class _ChecklistsTab extends ConsumerWidget {
                       ChecklistDetailScreen(checklistId: checklist.id),
                 ),
               ),
+              onDelete: () => ref
+                  .read(checklistsProvider.notifier)
+                  .deleteChecklist(checklist.id),
             ),
         ],
         const SizedBox(height: 80),

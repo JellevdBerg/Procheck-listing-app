@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/checklists_provider.dart';
 import '../providers/folders_provider.dart';
+import '../widgets/checklist_item_tile.dart';
 import '../widgets/text_prompt_dialog.dart';
 
 class ChecklistDetailScreen extends ConsumerStatefulWidget {
@@ -128,24 +129,10 @@ class _ChecklistDetailScreenState
                     itemCount: checklist.items.length,
                     itemBuilder: (context, index) {
                       final item = checklist.items[index];
-                      return CheckboxListTile(
-                        value: item.isChecked,
-                        title: Text(
-                          item.title,
-                          style: item.isChecked
-                              ? const TextStyle(
-                                  decoration: TextDecoration.lineThrough,
-                                )
-                              : null,
-                        ),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        onChanged: (_) =>
-                            notifier.toggleItem(checklist.id, item.id),
-                        secondary: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () =>
-                              notifier.removeItem(checklist.id, item.id),
-                        ),
+                      return ChecklistItemTile(
+                        key: ValueKey(item.id),
+                        checklistId: checklist.id,
+                        item: item,
                       );
                     },
                   ),
