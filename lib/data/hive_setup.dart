@@ -1,14 +1,15 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../models/checklist.dart';
-import '../models/checklist_item.dart';
-import '../models/checklist_template.dart';
-import '../models/folder.dart';
-import '../models/template_item.dart';
+import '../models/project.dart';
+import '../models/subtask.dart';
+import '../models/task.dart';
+import '../models/task_template.dart';
+import '../models/template_subtask.dart';
 
-const folderBoxName = 'folders';
-const checklistBoxName = 'checklists';
-const templateBoxName = 'templates';
+const projectBoxName = 'projects';
+const taskBoxName = 'tasks';
+const taskTemplateBoxName = 'task_templates';
+const settingsBoxName = 'settings';
 
 /// Initializes Hive and opens the app's boxes.
 ///
@@ -21,16 +22,17 @@ Future<void> setUpHive({String? testDirectoryPath}) async {
     await Hive.initFlutter();
   }
 
-  _registerAdapter(ChecklistItemAdapter());
-  _registerAdapter(TemplateItemAdapter());
-  _registerAdapter(ChecklistTemplateAdapter());
-  _registerAdapter(FolderAdapter());
-  _registerAdapter(ChecklistAdapter());
+  _registerAdapter(SubtaskAdapter());
+  _registerAdapter(TaskAdapter());
+  _registerAdapter(ProjectAdapter());
+  _registerAdapter(TemplateSubtaskAdapter());
+  _registerAdapter(TaskTemplateAdapter());
 
   await Future.wait([
-    Hive.openBox<Folder>(folderBoxName),
-    Hive.openBox<Checklist>(checklistBoxName),
-    Hive.openBox<ChecklistTemplate>(templateBoxName),
+    Hive.openBox<Project>(projectBoxName),
+    Hive.openBox<Task>(taskBoxName),
+    Hive.openBox<TaskTemplate>(taskTemplateBoxName),
+    Hive.openBox(settingsBoxName),
   ]);
 }
 

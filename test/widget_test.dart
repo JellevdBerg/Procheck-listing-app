@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:procheck/data/hive_setup.dart';
 import 'package:procheck/main.dart';
-import 'package:procheck/widgets/checklist_tile.dart';
-import 'package:procheck/widgets/folder_card.dart';
+import 'package:procheck/widgets/project_card.dart';
+import 'package:procheck/widgets/task_tile.dart';
 
 void main() {
   late Directory tempDir;
@@ -16,9 +16,9 @@ void main() {
   // Hive is initialized once for the whole suite: closing or clearing boxes
   // under the widget-test binding hangs indefinitely (both route through
   // real backend disk I/O that never resolves in this environment). Tests
-  // that run after the first therefore see checklists earlier tests left
-  // behind, so each test scopes its finders to the checklist it itself
-  // created rather than assuming a pristine app state.
+  // that run after the first therefore see tasks/projects earlier tests
+  // left behind, so each test scopes its finders to what it itself created
+  // rather than assuming a pristine app state.
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('procheck_test_');
     await setUpHive(testDirectoryPath: tempDir.path);
@@ -28,10 +28,10 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  Future<void> createChecklist(WidgetTester tester, String name) async {
+  Future<void> createTask(WidgetTester tester, String name) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('New checklist'));
+    await tester.tap(find.text('New task'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, name);
@@ -39,10 +39,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> createFolder(WidgetTester tester, String name) async {
+  Future<void> createProject(WidgetTester tester, String name) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('New folder'));
+    await tester.tap(find.text('New project'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), name);
@@ -50,35 +50,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows empty state, then a created checklist with progress', (
+  testWidgets('shows empty state, then a created task can be checked off', (
     tester,
   ) async {
     await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('No checklists yet'), findsOneWidget);
+    expect(find.textContaining('No tasks yet'), findsOneWidget);
 
-    await createChecklist(tester, 'Lab safety check');
+    await createTask(tester, 'Buy milk');
 
-    // The new checklist appears on the home screen with 0/0 progress.
-    expect(find.text('Lab safety check'), findsOneWidget);
-    expect(find.text('Empty'), findsOneWidget);
+    expect(find.text('Buy milk'), findsOneWidget);
 
-    // Drill in and add an item, then check it off.
-    await tester.tap(find.text('Lab safety check'));
+    final checkboxFinder = find.ancestor(
+      of: find.text('Buy milk'),
+      matching: find.byType(ListTile),
+    );
+    final checkbox = find.descendant(
+      of: checkboxFinder,
+      matching: find.byType(Checkbox),
+    );
+    await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Put on gloves');
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Put on gloves'), findsOneWidget);
-    expect(find.text('0/1'), findsOneWidget);
-
-    await tester.tap(find.byType(Checkbox));
-    await tester.pumpAndSettle();
-
-    expect(find.text('1/1'), findsOneWidget);
+    expect(tester.widget<Checkbox>(checkbox).value, isTrue);
   });
 
   testWidgets('checking off every subtask auto-checks the parent task', (
@@ -87,15 +82,9 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
     await tester.pumpAndSettle();
 
-    await createChecklist(tester, 'Release checklist');
-    await tester.tap(find.text('Release checklist'));
-    await tester.pumpAndSettle();
+    await createTask(tester, 'Ship it');
 
-    await tester.enterText(find.byType(TextField), 'Ship it');
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-
-    // Expand the item to reveal the subtasks section.
+    // Expand the task to reveal the subtasks section.
     await tester.tap(find.text('Ship it'));
     await tester.pumpAndSettle();
 
@@ -112,8 +101,18 @@ void main() {
     expect(find.text('Tag release'), findsOneWidget);
     expect(find.text('0/2 subtasks'), findsOneWidget);
 
-    // The parent's own checkbox plus one per subtask.
-    final checkboxes = find.byType(Checkbox);
+    // Scope to this test's own task tile: earlier tests' tasks are still
+    // around too (see the note on setUpAll above).
+    final taskTileFinder = find.ancestor(
+      of: find.text('Ship it'),
+      matching: find.byType(TaskTile),
+    );
+
+    // The task's own checkbox plus one per subtask.
+    final checkboxes = find.descendant(
+      of: taskTileFinder,
+      matching: find.byType(Checkbox),
+    );
     expect(checkboxes, findsNWidgets(3));
 
     await tester.tap(checkboxes.at(1));
@@ -123,61 +122,44 @@ void main() {
 
     expect(find.text('2/2 subtasks'), findsOneWidget);
 
-    // Parent checkbox should now be checked too.
-    final parentCheckbox = tester.widget<Checkbox>(checkboxes.first);
-    expect(parentCheckbox.value, isTrue);
+    // The task checkbox should now be checked too.
+    final taskCheckbox = tester.widget<Checkbox>(checkboxes.first);
+    expect(taskCheckbox.value, isTrue);
   });
 
-  testWidgets('hovering over a checklist reveals a delete button', (
-    tester,
-  ) async {
+  testWidgets('deleting a task removes it from the list', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
     await tester.pumpAndSettle();
 
-    await createChecklist(tester, 'Old checklist');
+    await createTask(tester, 'Temporary task');
+    expect(find.text('Temporary task'), findsOneWidget);
 
-    // Scope to this test's own tile: earlier tests' checklists are still
-    // around too (see the note on setUpAll above).
-    final tileFinder = find.ancestor(
-      of: find.text('Old checklist'),
-      matching: find.byType(ChecklistTile),
+    final rowFinder = find.ancestor(
+      of: find.text('Temporary task'),
+      matching: find.byType(ListTile),
     );
-    expect(tileFinder, findsOneWidget);
-    final deleteButtonFinder = find.descendant(
-      of: tileFinder,
-      matching: find.byIcon(Icons.delete_outline),
+    await tester.tap(
+      find.descendant(
+        of: rowFinder,
+        matching: find.byIcon(Icons.delete_outline),
+      ),
     );
-    expect(deleteButtonFinder, findsNothing);
-
-    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(gesture.removePointer);
-    await gesture.addPointer(location: Offset.zero);
     await tester.pumpAndSettle();
 
-    await gesture.moveTo(tester.getCenter(tileFinder));
-    await tester.pumpAndSettle();
-
-    expect(deleteButtonFinder, findsOneWidget);
-
-    await tester.tap(deleteButtonFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Old checklist'), findsNothing);
+    expect(find.text('Temporary task'), findsNothing);
   });
 
   testWidgets(
-    'a new folder shows as a featured card, hover reveals delete, tap opens it',
+    'a new project shows as a featured card, hover reveals delete, tap opens it',
     (tester) async {
       await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
       await tester.pumpAndSettle();
 
-      await createFolder(tester, 'Groceries');
+      await createProject(tester, 'Groceries');
 
       final cardFinder = find.ancestor(
         of: find.text('Groceries'),
-        matching: find.byType(FolderCard),
+        matching: find.byType(ProjectCard),
       );
       expect(cardFinder, findsOneWidget);
 
@@ -197,11 +179,11 @@ void main() {
 
       expect(deleteFinder, findsOneWidget);
 
-      // Tapping the card itself (not the delete button) opens the folder.
+      // Tapping the card itself (not the delete button) opens the project.
       await tester.tap(find.text('Groceries'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No checklists in this folder yet.'), findsOneWidget);
+      expect(find.text('No tasks in this project yet.'), findsOneWidget);
     },
   );
 }

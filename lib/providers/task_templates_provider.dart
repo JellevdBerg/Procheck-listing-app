@@ -5,24 +5,24 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
-import '../models/checklist_template.dart';
-import '../models/template_item.dart';
+import '../models/task_template.dart';
+import '../models/template_subtask.dart';
 
-final templatesProvider =
-    StateNotifierProvider<TemplatesNotifier, List<ChecklistTemplate>>((ref) {
-      return TemplatesNotifier();
+final taskTemplatesProvider =
+    StateNotifierProvider<TaskTemplatesNotifier, List<TaskTemplate>>((ref) {
+      return TaskTemplatesNotifier();
     });
 
 /// Persistence to Hive is fire-and-forget: [state] is the source of truth
 /// for the UI and is updated synchronously, while the on-disk copy catches
 /// up in the background.
-class TemplatesNotifier extends StateNotifier<List<ChecklistTemplate>> {
-  TemplatesNotifier() : super(_box.values.toList()) {
+class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
+  TaskTemplatesNotifier() : super(_box.values.toList()) {
     _sortState();
   }
 
-  static Box<ChecklistTemplate> get _box =>
-      Hive.box<ChecklistTemplate>(templateBoxName);
+  static Box<TaskTemplate> get _box =>
+      Hive.box<TaskTemplate>(taskTemplateBoxName);
 
   void _sortState() {
     final sorted = [...state]
@@ -30,12 +30,12 @@ class TemplatesNotifier extends StateNotifier<List<ChecklistTemplate>> {
     state = sorted;
   }
 
-  ChecklistTemplate addTemplate(String name, List<String> itemTitles) {
-    final template = ChecklistTemplate(
+  TaskTemplate addTemplate(String name, List<String> subtaskTitles) {
+    final template = TaskTemplate(
       id: const Uuid().v4(),
       name: name,
-      items: itemTitles
-          .map((title) => TemplateItem(id: const Uuid().v4(), title: title))
+      subtasks: subtaskTitles
+          .map((title) => TemplateSubtask(id: const Uuid().v4(), title: title))
           .toList(),
       createdAt: DateTime.now(),
     );
@@ -45,11 +45,11 @@ class TemplatesNotifier extends StateNotifier<List<ChecklistTemplate>> {
     return template;
   }
 
-  void updateTemplate(String id, String name, List<TemplateItem> items) {
+  void updateTemplate(String id, String name, List<TemplateSubtask> subtasks) {
     final template = _box.get(id);
     if (template == null) return;
     template.name = name;
-    template.items = items;
+    template.subtasks = subtasks;
     unawaited(template.save());
     state = [
       for (final t in state)

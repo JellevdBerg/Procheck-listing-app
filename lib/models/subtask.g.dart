@@ -1,32 +1,38 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'template_item.dart';
+part of 'subtask.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class TemplateItemAdapter extends TypeAdapter<TemplateItem> {
+class SubtaskAdapter extends TypeAdapter<Subtask> {
   @override
-  final int typeId = 1;
+  final int typeId = 0;
 
   @override
-  TemplateItem read(BinaryReader reader) {
+  Subtask read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return TemplateItem(id: fields[0] as String, title: fields[1] as String);
+    return Subtask(
+      id: fields[0] as String,
+      title: fields[1] as String,
+      isChecked: fields[2] as bool,
+    );
   }
 
   @override
-  void write(BinaryWriter writer, TemplateItem obj) {
+  void write(BinaryWriter writer, Subtask obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.title);
+      ..write(obj.title)
+      ..writeByte(2)
+      ..write(obj.isChecked);
   }
 
   @override
@@ -35,7 +41,7 @@ class TemplateItemAdapter extends TypeAdapter<TemplateItem> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TemplateItemAdapter &&
+      other is SubtaskAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

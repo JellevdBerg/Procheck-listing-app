@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/checklist_template.dart';
-import '../providers/checklists_provider.dart';
-import '../providers/folders_provider.dart';
-import '../providers/templates_provider.dart';
-import '../widgets/checklist_tile.dart';
-import '../widgets/create_checklist_sheet.dart';
-import '../widgets/folder_card.dart';
+import '../models/task_template.dart';
+import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
+import '../providers/task_templates_provider.dart';
+import '../providers/tasks_provider.dart';
+import '../widgets/create_task_sheet.dart';
 import '../widgets/page_transitions.dart';
+import '../widgets/project_card.dart';
+import '../widgets/task_tile.dart';
 import '../widgets/text_prompt_dialog.dart';
-import 'checklist_detail_screen.dart';
-import 'folder_detail_screen.dart';
-import 'template_editor_screen.dart';
+import 'project_detail_screen.dart';
+import 'settings_screen.dart';
+import 'task_template_editor_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -44,27 +45,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Procheck'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Settings',
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            ),
+          ],
           bottom: TabBar(
             controller: _tabController,
             tabs: const [
-              Tab(text: 'Checklists'),
+              Tab(text: 'Projects'),
               Tab(text: 'Templates'),
             ],
           ),
         ),
         body: TabBarView(
           controller: _tabController,
-          children: const [_ChecklistsTab(), _TemplatesTab()],
+          children: const [_ProjectsTab(), _TemplatesTab()],
         ),
         floatingActionButton: _tabController.index == 0
             ? FloatingActionButton(
-                onPressed: () => _showChecklistTabActions(context),
+                onPressed: () => _showProjectsTabActions(context),
                 child: const Icon(Icons.add),
               )
             : FloatingActionButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const TemplateEditorScreen(),
+                    builder: (_) => const TaskTemplateEditorScreen(),
                   ),
                 ),
                 child: const Icon(Icons.add),
@@ -73,7 +83,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  void _showChecklistTabActions(BuildContext context) {
+  void _showProjectsTabActions(BuildContext context) {
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -82,24 +92,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           children: [
             ListTile(
               leading: const Icon(Icons.checklist_rtl_rounded),
-              title: const Text('New checklist'),
+              title: const Text('New task'),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                showCreateChecklistSheet(context);
+                showCreateTaskSheet(context);
               },
             ),
             ListTile(
               leading: const Icon(Icons.folder_outlined),
-              title: const Text('New folder'),
+              title: const Text('New project'),
               onTap: () async {
                 Navigator.of(sheetContext).pop();
                 final name = await showTextPromptDialog(
                   context,
-                  title: 'New folder',
+                  title: 'New project',
                   confirmLabel: 'Create',
                 );
                 if (name != null) {
-                  ref.read(foldersProvider.notifier).addFolder(name);
+                  ref.read(projectsProvider.notifier).addProject(name);
                 }
               },
             ),
@@ -110,59 +120,78 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 }
 
-class _ChecklistsTab extends ConsumerWidget {
-  const _ChecklistsTab();
+class _ProjectsTab extends ConsumerWidget {
+  const _ProjectsTab();
 
   static const _featuredCount = 4;
+  static const _featuredCardHeight = 280.0;
+  static const _featuredCardMinWidth = 240.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final folders = ref.watch(foldersProvider);
-    final checklists = ref.watch(checklistsProvider);
-    final unfiledChecklists = checklists
-        .where((checklist) => checklist.folderId == null)
-        .toList();
+    final projects = ref.watch(projectsProvider);
+    final tasks = ref.watch(tasksProvider);
+    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
+    final unfiledTasks = tasks.where((t) => t.projectId == null).toList();
 
-    if (folders.isEmpty && unfiledChecklists.isEmpty) {
+    if (projects.isEmpty && unfiledTasks.isEmpty) {
       return const _EmptyState(
         icon: Icons.checklist_rtl_rounded,
-        message: 'No checklists yet.\nTap + to create your first checklist or folder.',
+        message: 'No tasks yet.\nTap + to create your first task or project.',
       );
     }
 
-    final featuredFolders = folders.take(_featuredCount).toList();
-    final otherFolders = folders.skip(_featuredCount).toList();
+    final featuredProjects = projects.take(_featuredCount).toList();
+    final otherProjects = projects.skip(_featuredCount).toList();
 
-    void openFolder(String folderId) =>
-        pushSlideIn(context, FolderDetailScreen(folderId: folderId));
+    void openProject(String projectId) => pushSlideIn(
+      context,
+      ProjectDetailScreen(projectId: projectId),
+      reduceMotion: reduceMotion,
+    );
 
     return ListView(
       children: [
-        if (featuredFolders.isNotEmpty) ...[
-          const _SectionHeader('Folders'),
+        if (featuredProjects.isNotEmpty) ...[
+          const _SectionHeader('Projects'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                for (final folder in featuredFolders)
-                  FolderCard(
-                    folder: folder,
-                    featured: true,
-                    checklists: checklists
-                        .where((c) => c.folderId == folder.id)
-                        .toList(),
-                    onTap: () => openFolder(folder.id),
-                    onDelete: () => ref
-                        .read(foldersProvider.notifier)
-                        .deleteFolder(folder.id),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final crossAxisCount =
+                    (constraints.maxWidth / _featuredCardMinWidth)
+                        .floor()
+                        .clamp(1, _featuredCount);
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisExtent: _featuredCardHeight,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
                   ),
-              ],
+                  itemCount: featuredProjects.length,
+                  itemBuilder: (context, index) {
+                    final project = featuredProjects[index];
+                    return ProjectCard(
+                      project: project,
+                      featured: true,
+                      tasks: tasks
+                          .where((t) => t.projectId == project.id)
+                          .toList(),
+                      onTap: () => openProject(project.id),
+                      onDelete: () => ref
+                          .read(projectsProvider.notifier)
+                          .deleteProject(project.id),
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],
-        if (otherFolders.isNotEmpty) ...[
+        if (otherProjects.isNotEmpty) ...[
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -170,34 +199,25 @@ class _ChecklistsTab extends ConsumerWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                for (final folder in otherFolders)
-                  FolderCard(
-                    folder: folder,
-                    checklists: checklists
-                        .where((c) => c.folderId == folder.id)
+                for (final project in otherProjects)
+                  ProjectCard(
+                    project: project,
+                    tasks: tasks
+                        .where((t) => t.projectId == project.id)
                         .toList(),
-                    onTap: () => openFolder(folder.id),
+                    onTap: () => openProject(project.id),
                     onDelete: () => ref
-                        .read(foldersProvider.notifier)
-                        .deleteFolder(folder.id),
+                        .read(projectsProvider.notifier)
+                        .deleteProject(project.id),
                   ),
               ],
             ),
           ),
         ],
-        if (unfiledChecklists.isNotEmpty) ...[
-          const _SectionHeader('Checklists'),
-          for (final checklist in unfiledChecklists)
-            ChecklistTile(
-              checklist: checklist,
-              onTap: () => pushSlideIn(
-                context,
-                ChecklistDetailScreen(checklistId: checklist.id),
-              ),
-              onDelete: () => ref
-                  .read(checklistsProvider.notifier)
-                  .deleteChecklist(checklist.id),
-            ),
+        if (unfiledTasks.isNotEmpty) ...[
+          const _SectionHeader('Tasks'),
+          for (final task in unfiledTasks)
+            TaskTile(key: ValueKey(task.id), task: task),
         ],
         const SizedBox(height: 80),
       ],
@@ -210,32 +230,33 @@ class _TemplatesTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final templates = ref.watch(templatesProvider);
+    final templates = ref.watch(taskTemplatesProvider);
 
     if (templates.isEmpty) {
       return const _EmptyState(
         icon: Icons.copy_all_outlined,
-        message: 'No templates yet.\nTemplates let you reuse a predefined set of checklist items.',
+        message: 'No templates yet.\nA template sets up a main task with its subtasks, ready to reuse.',
       );
     }
 
     return ListView(
       children: [
-        for (final ChecklistTemplate template in templates)
+        for (final TaskTemplate template in templates)
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.copy_all_outlined)),
             title: Text(template.name),
-            subtitle: Text('${template.items.length} item(s)'),
+            subtitle: Text('${template.subtasks.length} subtask(s)'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => TemplateEditorScreen(templateId: template.id),
+                builder: (_) =>
+                    TaskTemplateEditorScreen(templateId: template.id),
               ),
             ),
             trailing: IconButton(
               icon: const Icon(Icons.playlist_add_check),
               tooltip: 'Use template',
               onPressed: () =>
-                  showCreateChecklistSheet(context, initialTemplate: template),
+                  showCreateTaskSheet(context, initialTemplate: template),
             ),
           ),
         const SizedBox(height: 80),

@@ -1,15 +1,20 @@
 import 'package:hive/hive.dart';
 
-part 'checklist_item.g.dart';
+import 'subtask.dart';
 
-@HiveType(typeId: 0)
-class ChecklistItem extends HiveObject {
-  ChecklistItem({
+part 'task.g.dart';
+
+@HiveType(typeId: 1)
+class Task extends HiveObject {
+  Task({
     required this.id,
     required this.title,
+    required this.createdAt,
     this.isChecked = false,
     this.notes,
-    List<ChecklistItem>? subtasks,
+    List<Subtask>? subtasks,
+    this.projectId,
+    this.templateId,
   }) : subtasks = subtasks ?? [];
 
   @HiveField(0)
@@ -25,7 +30,18 @@ class ChecklistItem extends HiveObject {
   String? notes;
 
   @HiveField(4)
-  List<ChecklistItem> subtasks;
+  List<Subtask> subtasks;
+
+  /// Null when the task isn't filed under any project.
+  @HiveField(5)
+  String? projectId;
+
+  @HiveField(6)
+  DateTime createdAt;
+
+  /// The template this task was instantiated from, if any.
+  @HiveField(7)
+  String? templateId;
 
   bool get hasSubtasks => subtasks.isNotEmpty;
 

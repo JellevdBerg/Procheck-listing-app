@@ -1,22 +1,22 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'folder.dart';
+part of 'project.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class FolderAdapter extends TypeAdapter<Folder> {
+class ProjectAdapter extends TypeAdapter<Project> {
   @override
-  final int typeId = 3;
+  final int typeId = 2;
 
   @override
-  Folder read(BinaryReader reader) {
+  Project read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return Folder(
+    return Project(
       id: fields[0] as String,
       name: fields[1] as String,
       createdAt: fields[2] as DateTime,
@@ -24,7 +24,7 @@ class FolderAdapter extends TypeAdapter<Folder> {
   }
 
   @override
-  void write(BinaryWriter writer, Folder obj) {
+  void write(BinaryWriter writer, Project obj) {
     writer
       ..writeByte(3)
       ..writeByte(0)
@@ -41,7 +41,7 @@ class FolderAdapter extends TypeAdapter<Folder> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is FolderAdapter &&
+      other is ProjectAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

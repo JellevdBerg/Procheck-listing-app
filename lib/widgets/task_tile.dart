@@ -1,27 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/checklist_item.dart';
-import '../providers/checklists_provider.dart';
+import '../models/task.dart';
+import '../providers/tasks_provider.dart';
 
-/// A single checklist item: a checkbox + title row that expands to reveal
-/// its subtasks below and a notes panel to the side. Checking every
-/// subtask automatically checks the parent item, and vice versa.
-class ChecklistItemTile extends ConsumerStatefulWidget {
-  const ChecklistItemTile({
-    super.key,
-    required this.checklistId,
-    required this.item,
-  });
+/// A single task row: a checkbox + title that expands in place to reveal
+/// its subtasks below and a notes panel beside them. Checking every
+/// subtask automatically checks the task, and vice versa.
+class TaskTile extends ConsumerStatefulWidget {
+  const TaskTile({super.key, required this.task});
 
-  final String checklistId;
-  final ChecklistItem item;
+  final Task task;
 
   @override
-  ConsumerState<ChecklistItemTile> createState() => _ChecklistItemTileState();
+  ConsumerState<TaskTile> createState() => _TaskTileState();
 }
 
-class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
+class _TaskTileState extends ConsumerState<TaskTile> {
   // Below this width there isn't room for subtasks and notes side by side,
   // so the notes panel stacks underneath instead.
   static const _sideBySideBreakpoint = 480.0;
@@ -34,18 +29,18 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
   @override
   void initState() {
     super.initState();
-    _notesController = TextEditingController(text: widget.item.notes ?? '');
+    _notesController = TextEditingController(text: widget.task.notes ?? '');
     _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
   }
 
   @override
-  void didUpdateWidget(covariant ChecklistItemTile oldWidget) {
+  void didUpdateWidget(covariant TaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Keep the field in sync with external changes (e.g. undo elsewhere)
     // without clobbering text the user is actively editing.
     if (!_notesFocusNode.hasFocus &&
-        widget.item.notes != oldWidget.item.notes) {
-      _notesController.text = widget.item.notes ?? '';
+        widget.task.notes != oldWidget.task.notes) {
+      _notesController.text = widget.task.notes ?? '';
     }
   }
 
@@ -65,23 +60,19 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
   void _saveNotes() {
     final text = _notesController.text.trim();
     ref
-        .read(checklistsProvider.notifier)
-        .setItemNotes(
-          widget.checklistId,
-          widget.item.id,
-          text.isEmpty ? null : text,
-        );
+        .read(tasksProvider.notifier)
+        .setTaskNotes(widget.task.id, text.isEmpty ? null : text);
   }
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    final notifier = ref.read(checklistsProvider.notifier);
+    final task = widget.task;
+    final notifier = ref.read(tasksProvider.notifier);
 
     final subtitleParts = <String>[
-      if ((item.notes ?? '').trim().isNotEmpty) item.notes!.trim(),
-      if (item.hasSubtasks)
-        '${item.completedSubtaskCount}/${item.subtasks.length} subtasks',
+      if ((task.notes ?? '').trim().isNotEmpty) task.notes!.trim(),
+      if (task.hasSubtasks)
+        '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
     ];
 
     return Column(
@@ -89,12 +80,12 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
         ListTile(
           onTap: () => setState(() => _expanded = !_expanded),
           leading: Checkbox(
-            value: item.isChecked,
-            onChanged: (_) => notifier.toggleItem(widget.checklistId, item.id),
+            value: task.isChecked,
+            onChanged: (_) => notifier.toggleTask(task.id),
           ),
           title: Text(
-            item.title,
-            style: item.isChecked
+            task.title,
+            style: task.isChecked
                 ? const TextStyle(decoration: TextDecoration.lineThrough)
                 : null,
           ),
@@ -110,9 +101,8 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
             children: [
               IconButton(
                 icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete item',
-                onPressed: () =>
-                    notifier.removeItem(widget.checklistId, item.id),
+                tooltip: 'Delete task',
+                onPressed: () => notifier.deleteTask(task.id),
               ),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
             ],
@@ -123,9 +113,8 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
           child: _expanded
-              ? _ExpandedItemDetail(
-                  checklistId: widget.checklistId,
-                  item: item,
+              ? _ExpandedTaskDetail(
+                  task: task,
                   notesController: _notesController,
                   notesFocusNode: _notesFocusNode,
                   newSubtaskController: _newSubtaskController,
@@ -139,21 +128,20 @@ class _ChecklistItemTileState extends ConsumerState<ChecklistItemTile> {
     );
   }
 
-  void _addSubtask(ChecklistsNotifier notifier) {
+  void _addSubtask(TasksNotifier notifier) {
     final title = _newSubtaskController.text.trim();
     if (title.isEmpty) return;
-    notifier.addSubtask(widget.checklistId, widget.item.id, title);
+    notifier.addSubtask(widget.task.id, title);
     _newSubtaskController.clear();
   }
 }
 
-/// The expanded region of a [ChecklistItemTile]: subtasks below the task,
-/// with a notes panel that sits to the right when there's room for it and
-/// stacks underneath otherwise.
-class _ExpandedItemDetail extends ConsumerWidget {
-  const _ExpandedItemDetail({
-    required this.checklistId,
-    required this.item,
+/// The expanded region of a [TaskTile]: subtasks below the task, with a
+/// notes panel that sits to the right when there's room for it and stacks
+/// underneath otherwise.
+class _ExpandedTaskDetail extends ConsumerWidget {
+  const _ExpandedTaskDetail({
+    required this.task,
     required this.notesController,
     required this.notesFocusNode,
     required this.newSubtaskController,
@@ -161,8 +149,7 @@ class _ExpandedItemDetail extends ConsumerWidget {
     required this.breakpoint,
   });
 
-  final String checklistId;
-  final ChecklistItem item;
+  final Task task;
   final TextEditingController notesController;
   final FocusNode notesFocusNode;
   final TextEditingController newSubtaskController;
@@ -176,8 +163,7 @@ class _ExpandedItemDetail extends ConsumerWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final subtasks = _SubtasksSection(
-            checklistId: checklistId,
-            item: item,
+            task: task,
             newSubtaskController: newSubtaskController,
             onAddSubtask: onAddSubtask,
           );
@@ -230,28 +216,26 @@ class _NotesField extends StatelessWidget {
 
 class _SubtasksSection extends ConsumerWidget {
   const _SubtasksSection({
-    required this.checklistId,
-    required this.item,
+    required this.task,
     required this.newSubtaskController,
     required this.onAddSubtask,
   });
 
-  final String checklistId;
-  final ChecklistItem item;
+  final Task task;
   final TextEditingController newSubtaskController;
   final VoidCallback onAddSubtask;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(checklistsProvider.notifier);
+    final notifier = ref.read(tasksProvider.notifier);
     final theme = Theme.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (item.subtasks.isNotEmpty) ...[
+        if (task.subtasks.isNotEmpty) ...[
           Text('Subtasks', style: theme.textTheme.labelLarge),
-          for (final subtask in item.subtasks)
+          for (final subtask in task.subtasks)
             CheckboxListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -263,12 +247,11 @@ class _SubtasksSection extends ConsumerWidget {
                     ? const TextStyle(decoration: TextDecoration.lineThrough)
                     : null,
               ),
-              onChanged: (_) => notifier.toggleItem(checklistId, subtask.id),
+              onChanged: (_) => notifier.toggleSubtask(task.id, subtask.id),
               secondary: IconButton(
                 icon: const Icon(Icons.close, size: 18),
                 tooltip: 'Remove subtask',
-                onPressed: () =>
-                    notifier.removeSubtask(checklistId, subtask.id),
+                onPressed: () => notifier.removeSubtask(task.id, subtask.id),
               ),
             ),
           const SizedBox(height: 4),
