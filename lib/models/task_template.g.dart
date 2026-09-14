@@ -1,44 +1,41 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'checklist_item.dart';
+part of 'task_template.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class ChecklistItemAdapter extends TypeAdapter<ChecklistItem> {
+class TaskTemplateAdapter extends TypeAdapter<TaskTemplate> {
   @override
-  final int typeId = 0;
+  final int typeId = 4;
 
   @override
-  ChecklistItem read(BinaryReader reader) {
+  TaskTemplate read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return ChecklistItem(
+    return TaskTemplate(
       id: fields[0] as String,
-      title: fields[1] as String,
-      isChecked: fields[2] as bool,
-      notes: fields[3] as String?,
-      subtasks: (fields[4] as List?)?.cast<ChecklistItem>(),
+      name: fields[1] as String,
+      subtasks: (fields[2] as List).cast<TemplateSubtask>(),
+      createdAt: fields[3] as DateTime,
     );
   }
 
   @override
-  void write(BinaryWriter writer, ChecklistItem obj) {
+  void write(BinaryWriter writer, TaskTemplate obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(4)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.title)
+      ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.isChecked)
+      ..write(obj.subtasks)
       ..writeByte(3)
-      ..write(obj.notes)
-      ..writeByte(4)
-      ..write(obj.subtasks);
+      ..write(obj.createdAt);
   }
 
   @override
@@ -47,7 +44,7 @@ class ChecklistItemAdapter extends TypeAdapter<ChecklistItem> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ChecklistItemAdapter &&
+      other is TaskTemplateAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

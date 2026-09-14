@@ -2,49 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../models/checklist_template.dart';
-import '../models/template_item.dart';
-import '../providers/templates_provider.dart';
+import '../models/task_template.dart';
+import '../models/template_subtask.dart';
+import '../providers/task_templates_provider.dart';
 import '../widgets/text_prompt_dialog.dart';
 
-class TemplateEditorScreen extends ConsumerStatefulWidget {
-  const TemplateEditorScreen({super.key, this.templateId});
+class TaskTemplateEditorScreen extends ConsumerStatefulWidget {
+  const TaskTemplateEditorScreen({super.key, this.templateId});
 
   /// Null when creating a brand new template.
   final String? templateId;
 
   @override
-  ConsumerState<TemplateEditorScreen> createState() =>
-      _TemplateEditorScreenState();
+  ConsumerState<TaskTemplateEditorScreen> createState() =>
+      _TaskTemplateEditorScreenState();
 }
 
-class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
+class _TaskTemplateEditorScreenState
+    extends ConsumerState<TaskTemplateEditorScreen> {
   late final TextEditingController _nameController;
-  final _newItemController = TextEditingController();
-  late List<TemplateItem> _items;
+  final _newSubtaskController = TextEditingController();
+  late List<TemplateSubtask> _subtasks;
 
   @override
   void initState() {
     super.initState();
     final template = _findTemplate();
     _nameController = TextEditingController(text: template?.name ?? '');
-    _items = template == null
+    _subtasks = template == null
         ? []
-        : template.items
-              .map((item) => TemplateItem(id: item.id, title: item.title))
+        : template.subtasks
+              .map((s) => TemplateSubtask(id: s.id, title: s.title))
               .toList();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _newItemController.dispose();
+    _newSubtaskController.dispose();
     super.dispose();
   }
 
-  ChecklistTemplate? _findTemplate() {
+  TaskTemplate? _findTemplate() {
     if (widget.templateId == null) return null;
-    final templates = ref.read(templatesProvider);
+    final templates = ref.read(taskTemplatesProvider);
     final matches = templates.where((t) => t.id == widget.templateId);
     return matches.isEmpty ? null : matches.first;
   }
@@ -65,12 +66,11 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
                 final confirmed = await showConfirmDialog(
                   context,
                   title: 'Delete template?',
-                  message:
-                      'Existing checklists created from it are unaffected.',
+                  message: 'Existing tasks created from it are unaffected.',
                 );
                 if (confirmed) {
                   ref
-                      .read(templatesProvider.notifier)
+                      .read(taskTemplatesProvider.notifier)
                       .deleteTemplate(widget.templateId!);
                   if (context.mounted) Navigator.of(context).pop();
                 }
@@ -91,41 +91,44 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
             child: TextField(
               controller: _nameController,
               decoration: const InputDecoration(
-                labelText: 'Template name',
+                labelText: 'Main task name',
                 border: OutlineInputBorder(),
               ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text('Items', style: Theme.of(context).textTheme.labelLarge),
+            child: Text(
+              'Subtasks',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
           ),
           Expanded(
-            child: _items.isEmpty
+            child: _subtasks.isEmpty
                 ? Center(
                     child: Text(
-                      'No items yet. Add one below.',
+                      'No subtasks yet. Add one below.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   )
                 : ReorderableListView.builder(
-                    itemCount: _items.length,
+                    itemCount: _subtasks.length,
                     onReorderItem: (oldIndex, newIndex) {
                       setState(() {
-                        final item = _items.removeAt(oldIndex);
-                        _items.insert(newIndex, item);
+                        final subtask = _subtasks.removeAt(oldIndex);
+                        _subtasks.insert(newIndex, subtask);
                       });
                     },
                     itemBuilder: (context, index) {
-                      final item = _items[index];
+                      final subtask = _subtasks[index];
                       return ListTile(
-                        key: ValueKey(item.id),
+                        key: ValueKey(subtask.id),
                         leading: const Icon(Icons.drag_handle),
-                        title: Text(item.title),
+                        title: Text(subtask.title),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () =>
-                              setState(() => _items.removeAt(index)),
+                              setState(() => _subtasks.removeAt(index)),
                         ),
                       );
                     },
@@ -139,18 +142,18 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _newItemController,
+                      controller: _newSubtaskController,
                       decoration: const InputDecoration(
-                        hintText: 'Add an item',
+                        hintText: 'Add a subtask',
                         border: OutlineInputBorder(),
                       ),
-                      onSubmitted: (_) => _addItem(),
+                      onSubmitted: (_) => _addSubtask(),
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
                     icon: const Icon(Icons.add),
-                    onPressed: _addItem,
+                    onPressed: _addSubtask,
                   ),
                 ],
               ),
@@ -161,12 +164,12 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
     );
   }
 
-  void _addItem() {
-    final title = _newItemController.text.trim();
+  void _addSubtask() {
+    final title = _newSubtaskController.text.trim();
     if (title.isEmpty) return;
     setState(() {
-      _items.add(TemplateItem(id: const Uuid().v4(), title: title));
-      _newItemController.clear();
+      _subtasks.add(TemplateSubtask(id: const Uuid().v4(), title: title));
+      _newSubtaskController.clear();
     });
   }
 
@@ -174,11 +177,11 @@ class _TemplateEditorScreenState extends ConsumerState<TemplateEditorScreen> {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
 
-    final notifier = ref.read(templatesProvider.notifier);
+    final notifier = ref.read(taskTemplatesProvider.notifier);
     if (widget.templateId == null) {
-      notifier.addTemplate(name, _items.map((i) => i.title).toList());
+      notifier.addTemplate(name, _subtasks.map((s) => s.title).toList());
     } else {
-      notifier.updateTemplate(widget.templateId!, name, _items);
+      notifier.updateTemplate(widget.templateId!, name, _subtasks);
     }
     Navigator.of(context).pop();
   }

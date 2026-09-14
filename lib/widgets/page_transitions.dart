@@ -2,14 +2,24 @@ import 'package:flutter/material.dart';
 
 /// Pushes [page] with a slide-in-from-the-right transition, and lets the
 /// screen underneath react via [DropAwayOnPush] (fading/shrinking away
-/// while this one slides in).
-Future<T?> pushSlideIn<T>(BuildContext context, Widget page) {
+/// while this one slides in). Pass [reduceMotion] to swap in a quick fade
+/// instead, for users who'd rather skip the movement.
+Future<T?> pushSlideIn<T>(
+  BuildContext context,
+  Widget page, {
+  bool reduceMotion = false,
+}) {
   return Navigator.of(context).push<T>(
     PageRouteBuilder<T>(
       pageBuilder: (context, animation, secondaryAnimation) => page,
-      transitionDuration: const Duration(milliseconds: 320),
-      reverseTransitionDuration: const Duration(milliseconds: 260),
+      transitionDuration: Duration(milliseconds: reduceMotion ? 120 : 320),
+      reverseTransitionDuration: Duration(
+        milliseconds: reduceMotion ? 100 : 260,
+      ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        if (reduceMotion) {
+          return FadeTransition(opacity: animation, child: child);
+        }
         final offset = Tween<Offset>(
           begin: const Offset(1, 0),
           end: Offset.zero,

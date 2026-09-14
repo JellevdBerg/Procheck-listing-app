@@ -1,46 +1,52 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'checklist.dart';
+part of 'task.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class ChecklistAdapter extends TypeAdapter<Checklist> {
+class TaskAdapter extends TypeAdapter<Task> {
   @override
-  final int typeId = 4;
+  final int typeId = 1;
 
   @override
-  Checklist read(BinaryReader reader) {
+  Task read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return Checklist(
+    return Task(
       id: fields[0] as String,
-      name: fields[1] as String,
-      items: (fields[2] as List).cast<ChecklistItem>(),
-      createdAt: fields[3] as DateTime,
-      folderId: fields[4] as String?,
-      templateId: fields[5] as String?,
+      title: fields[1] as String,
+      createdAt: fields[6] as DateTime,
+      isChecked: fields[2] as bool,
+      notes: fields[3] as String?,
+      subtasks: (fields[4] as List?)?.cast<Subtask>(),
+      projectId: fields[5] as String?,
+      templateId: fields[7] as String?,
     );
   }
 
   @override
-  void write(BinaryWriter writer, Checklist obj) {
+  void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.name)
+      ..write(obj.title)
       ..writeByte(2)
-      ..write(obj.items)
+      ..write(obj.isChecked)
       ..writeByte(3)
-      ..write(obj.createdAt)
+      ..write(obj.notes)
       ..writeByte(4)
-      ..write(obj.folderId)
+      ..write(obj.subtasks)
       ..writeByte(5)
+      ..write(obj.projectId)
+      ..writeByte(6)
+      ..write(obj.createdAt)
+      ..writeByte(7)
       ..write(obj.templateId);
   }
 
@@ -50,7 +56,7 @@ class ChecklistAdapter extends TypeAdapter<Checklist> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ChecklistAdapter &&
+      other is TaskAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
