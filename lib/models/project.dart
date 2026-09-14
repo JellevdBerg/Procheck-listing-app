@@ -25,7 +25,10 @@ class Project extends HiveObject {
   @HiveField(3)
   DateTime? lastOpenedAt;
 
-  /// Index into [accentPalette] (see settings_provider.dart).
-  @HiveField(4)
+  /// Index into [accentPalette] (see settings_provider.dart). Projects saved
+  /// before this field existed have no value for it on disk, so a
+  /// [defaultValue] is required — without it, the generated adapter casts
+  /// the missing field straight to `int` and crashes on startup.
+  @HiveField(4, defaultValue: 0)
   int colorIndex;
 }

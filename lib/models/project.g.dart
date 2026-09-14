@@ -21,7 +21,7 @@ class ProjectAdapter extends TypeAdapter<Project> {
       name: fields[1] as String,
       createdAt: fields[2] as DateTime,
       lastOpenedAt: fields[3] as DateTime?,
-      colorIndex: fields[4] as int,
+      colorIndex: fields[4] == null ? 0 : fields[4] as int,
     );
   }
 
