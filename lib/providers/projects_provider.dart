@@ -25,18 +25,26 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   final Ref _ref;
 
   static Box<Project> get _box => Hive.box<Project>(projectBoxName);
+  static final _neverOpened = DateTime.fromMillisecondsSinceEpoch(0);
 
   void _sortState() {
     final sorted = [...state]
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      ..sort((a, b) {
+        final recency = (b.lastOpenedAt ?? _neverOpened).compareTo(
+          a.lastOpenedAt ?? _neverOpened,
+        );
+        if (recency != 0) return recency;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
     state = sorted;
   }
 
-  Project addProject(String name) {
+  Project addProject(String name, {int colorIndex = 0}) {
     final project = Project(
       id: const Uuid().v4(),
       name: name,
       createdAt: DateTime.now(),
+      colorIndex: colorIndex,
     );
     unawaited(_box.put(project.id, project));
     state = [...state, project];
@@ -53,6 +61,26 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
       for (final p in state)
         if (p.id == id) project else p,
     ];
+    _sortState();
+  }
+
+  void setProjectColor(String id, int colorIndex) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.colorIndex = colorIndex;
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+  }
+
+  /// Marks a project as just opened, so it sorts to the front.
+  void touchProject(String id) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.lastOpenedAt = DateTime.now();
+    unawaited(project.save());
     _sortState();
   }
 

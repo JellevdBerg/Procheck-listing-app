@@ -1,6 +1,6 @@
 {
-    "name": "Procheck",
-    "short_name": "Procheck",
+    "name": "ProCheck",
+    "short_name": "ProCheck",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#3D5AFE",

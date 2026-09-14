@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/hive_setup.dart';
 import 'providers/settings_provider.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +19,7 @@ class ProcheckApp extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final seedColor = settings.accentColor;
     return MaterialApp(
-      title: 'Procheck',
+      title: 'ProCheck',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: ThemeData(
@@ -33,7 +33,7 @@ class ProcheckApp extends ConsumerWidget {
         ),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: const SplashScreen(),
     );
   }
 }

@@ -87,13 +87,36 @@ class _TaskTemplateEditorScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
               controller: _nameController,
               decoration: const InputDecoration(
                 labelText: 'Main task name',
                 border: OutlineInputBorder(),
               ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newSubtaskController,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a subtask',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _addSubtask(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  icon: const Icon(Icons.add),
+                  onPressed: _addSubtask,
+                ),
+              ],
             ),
           ),
           Padding(
@@ -107,7 +130,7 @@ class _TaskTemplateEditorScreenState
             child: _subtasks.isEmpty
                 ? Center(
                     child: Text(
-                      'No subtasks yet. Add one below.',
+                      'No subtasks yet. Add one above.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   )
@@ -133,31 +156,6 @@ class _TaskTemplateEditorScreenState
                       );
                     },
                   ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _newSubtaskController,
-                      decoration: const InputDecoration(
-                        hintText: 'Add a subtask',
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (_) => _addSubtask(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    icon: const Icon(Icons.add),
-                    onPressed: _addSubtask,
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

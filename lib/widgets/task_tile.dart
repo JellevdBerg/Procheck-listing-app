@@ -69,8 +69,11 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     final task = widget.task;
     final notifier = ref.read(tasksProvider.notifier);
 
+    // Once expanded, the notes panel already shows the full text, so the
+    // collapsed preview line would just be a duplicate.
     final subtitleParts = <String>[
-      if ((task.notes ?? '').trim().isNotEmpty) task.notes!.trim(),
+      if (!_expanded && (task.notes ?? '').trim().isNotEmpty)
+        task.notes!.trim(),
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
     ];
