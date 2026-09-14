@@ -1,12 +1,12 @@
 {
-    "name": "procheck",
-    "short_name": "procheck",
+    "name": "Procheck",
+    "short_name": "Procheck",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#3D5AFE",
+    "theme_color": "#3D5AFE",
+    "description": "A lightweight checklist app with folders and reusable templates.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
