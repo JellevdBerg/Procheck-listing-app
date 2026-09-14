@@ -7,6 +7,9 @@ on:
       - "claude/**"
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -38,3 +41,16 @@ jobs:
           name: procheck-windows
           path: procheck-windows.zip
           retention-days: 30
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-latest
+          name: "Procheck (Windows) - latest build"
+          body: |
+            Automatically built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
+
+            Download `procheck-windows.zip` below, unzip it, and run `procheck.exe`.
+            This release is overwritten on every push, so it always tracks the latest commit.
+          prerelease: true
+          files: procheck-windows.zip
