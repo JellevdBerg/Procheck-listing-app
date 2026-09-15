@@ -85,8 +85,8 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   }
 
   void deleteProject(String id) {
-    // Unfile any tasks that live in this project before deleting it.
-    _ref.read(tasksProvider.notifier).unfileTasksInProject(id);
+    // Deleting a project takes its tasks (and their subtasks) with it.
+    _ref.read(tasksProvider.notifier).deleteTasksInProject(id);
     unawaited(_box.delete(id));
     state = state.where((p) => p.id != id).toList();
   }

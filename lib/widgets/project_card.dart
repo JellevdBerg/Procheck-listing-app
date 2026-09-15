@@ -180,7 +180,7 @@ class _ProjectCardState extends State<ProjectCard> {
       context,
       title: 'Delete project?',
       message:
-          'Tasks inside "${widget.project.name}" will move to Unfiled. This cannot be undone.',
+          'Tasks and subtasks inside "${widget.project.name}" will be deleted too. This cannot be undone.',
     );
     if (confirmed) widget.onDelete();
   }

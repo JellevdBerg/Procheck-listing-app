@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import 'wobble_checkbox.dart';
 
 /// A single task row: a checkbox + title that expands in place to reveal
 /// its subtasks below and a notes panel beside them. Checking every
@@ -68,6 +70,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   Widget build(BuildContext context) {
     final task = widget.task;
     final notifier = ref.read(tasksProvider.notifier);
+    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
 
     // Once expanded, the notes panel already shows the full text, so the
     // collapsed preview line would just be a duplicate.
@@ -82,8 +85,9 @@ class _TaskTileState extends ConsumerState<TaskTile> {
       children: [
         ListTile(
           onTap: () => setState(() => _expanded = !_expanded),
-          leading: Checkbox(
+          leading: WobbleCheckbox(
             value: task.isChecked,
+            reduceMotion: reduceMotion,
             onChanged: (_) => notifier.toggleTask(task.id),
           ),
           title: Text(

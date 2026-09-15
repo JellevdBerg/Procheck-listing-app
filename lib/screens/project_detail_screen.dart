@@ -85,7 +85,7 @@ class ProjectDetailScreen extends ConsumerWidget {
                 context,
                 title: 'Delete project?',
                 message:
-                    'Tasks inside "${project.name}" will move to Unfiled. This cannot be undone.',
+                    'Tasks and subtasks inside "${project.name}" will be deleted too. This cannot be undone.',
               );
               if (confirmed) {
                 ref.read(projectsProvider.notifier).deleteProject(projectId);
