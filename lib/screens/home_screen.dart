@@ -321,8 +321,11 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                   shrinkWidth: false,
                   onRemoved: () =>
                       ref.read(tasksProvider.notifier).deleteTask(task.id),
-                  builder: (context, triggerRemoval) =>
-                      TaskTile(task: task, onDelete: triggerRemoval),
+                  builder: (context, triggerRemoval) => TaskTile(
+                    task: task,
+                    onDelete: triggerRemoval,
+                    autoRemoveWhenChecked: true,
+                  ),
                 ),
             ],
             const SizedBox(height: 80),
