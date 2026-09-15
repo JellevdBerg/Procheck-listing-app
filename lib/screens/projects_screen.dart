@@ -69,17 +69,26 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       children: [
         Row(
           children: [
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _query = value),
-                  decoration: const InputDecoration(hintText: 'Search projects'),
+            // A single Expanded — rather than a Flexible competing for flex
+            // space with a separate Spacer — is what keeps the trailing
+            // controls flush against the right edge as the window widens;
+            // two same-priority flexible children split the leftover space
+            // between them instead of handing it all to the Spacer.
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: const InputDecoration(
+                      hintText: 'Search projects',
+                    ),
+                  ),
                 ),
               ),
             ),
-            const Spacer(),
             NocturneSegmented<_ProjectsView>(
               options: _ProjectsView.values,
               value: _view,

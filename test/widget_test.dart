@@ -443,6 +443,30 @@ void main() {
     expect(cardWidth, lessThan(windowWidth - 232 - 32 - 100));
   });
 
+  testWidgets(
+    "the toolbar's New project button stays flush against the right edge on resize",
+    (tester) async {
+      await pumpApp(tester);
+
+      Future<double> rightGapAt(double width) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        await tester.pumpAndSettle();
+        return width - tester.getTopRight(find.text('New project')).dx;
+      }
+
+      final narrowGap = await rightGapAt(1000);
+      final wideGap = await rightGapAt(1800);
+
+      // A Flexible search field competing for flex space with a separate
+      // Spacer (rather than one Expanded owning all the leftover space) let
+      // this drift away from the edge as the window widened — regression
+      // coverage for that.
+      expect(wideGap, closeTo(narrowGap, 0.5));
+
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+    },
+  );
+
   testWidgets('Settings > Wipe All Data clears everything without restart', (
     tester,
   ) async {
