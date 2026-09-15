@@ -117,7 +117,11 @@ class ProjectDetailScreen extends ConsumerWidget {
         body: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ProjectHeroSidebar(project: project, accentColor: accentColor),
+            _ProjectHeroSidebar(
+              project: project,
+              accentColor: accentColor,
+              reduceMotion: reduceMotion,
+            ),
             Expanded(
               child: tasks.isEmpty
                   ? Center(
@@ -163,10 +167,15 @@ class ProjectDetailScreen extends ConsumerWidget {
 /// project card it was opened from, so it morphs in from wherever that card
 /// was on the previous screen.
 class _ProjectHeroSidebar extends StatelessWidget {
-  const _ProjectHeroSidebar({required this.project, required this.accentColor});
+  const _ProjectHeroSidebar({
+    required this.project,
+    required this.accentColor,
+    required this.reduceMotion,
+  });
 
   final Project project;
   final Color accentColor;
+  final bool reduceMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -177,22 +186,31 @@ class _ProjectHeroSidebar extends StatelessWidget {
         color: accentColor.withValues(alpha: 0.16),
         border: Border(right: BorderSide(color: theme.dividerColor)),
       ),
-      child: Hero(
-        tag: projectHeaderHeroTag(project.id),
-        child: Material(
-          type: MaterialType.transparency,
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-              // Open, since this is the currently-opened project; the main
-              // menu's ProjectCard uses the closed variant instead, and the
-              // Hero flight between the two is what carries the visual
-              // "opening" transition (Flutter has no built-in animated icon
-              // pair for a folder morphing open, so this is the closest
-              // natural transition available without a bespoke icon asset).
-              Icon(Icons.folder_open, color: accentColor, size: 28),
-              const SizedBox(height: 16),
-              Expanded(
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // Open, since this is the currently-opened project; the main menu's
+          // ProjectCard uses the closed variant instead, and the Hero flight
+          // between the two is what carries the visual "opening" transition
+          // (Flutter has no built-in animated icon pair for a folder morphing
+          // open, so this is the closest natural transition available
+          // without a bespoke icon asset).
+          Hero(
+            tag: projectIconHeroTag(project.id),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Icon(Icons.folder_open, color: accentColor, size: 28),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Hero(
+              tag: projectNameHeroTag(project.id),
+              flightShuttleBuilder: projectNameHeroFlightShuttleBuilder(
+                reduceMotion,
+              ),
+              child: Material(
+                type: MaterialType.transparency,
                 child: Align(
                   alignment: Alignment.center,
                   child: RotatedBox(
@@ -212,10 +230,10 @@ class _ProjectHeroSidebar extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }

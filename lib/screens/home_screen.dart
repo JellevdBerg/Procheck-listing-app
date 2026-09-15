@@ -259,6 +259,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                           child: ProjectCard(
                             project: project,
                             featured: true,
+                            reduceMotion: reduceMotion,
                             tasks: tasks
                                 .where((t) => t.projectId == project.id)
                                 .toList(),
@@ -301,6 +302,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                             .deleteProject(project.id),
                         builder: (context, triggerRemoval) => ProjectCard(
                           project: project,
+                          reduceMotion: reduceMotion,
                           tasks: tasks
                               .where((t) => t.projectId == project.id)
                               .toList(),

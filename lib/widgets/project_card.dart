@@ -5,9 +5,63 @@ import '../models/task.dart';
 import '../providers/settings_provider.dart';
 import 'text_prompt_dialog.dart';
 
-/// The Hero tag a [ProjectCard]'s header shares with the thin bar header of
+/// The Hero tags a [ProjectCard]'s header shares with the thin bar header of
 /// the project's detail screen, so tapping the card morphs it into that bar.
-String projectHeaderHeroTag(String projectId) => 'project-header-$projectId';
+///
+/// The icon and the name are split into two independent Hero flights rather
+/// than one covering both: the icon's rect-tween looks fine under Flutter's
+/// default flight (it's a single glyph), but the name goes from a short
+/// horizontal line on the card to a large vertical line in the detail
+/// screen's sidebar, and stretching one of those across the animated rect —
+/// which is what a single shared Hero does — reads as the text warping or
+/// floating mid-flight. See [projectNameHeroFlightShuttleBuilder].
+String projectIconHeroTag(String projectId) => 'project-icon-$projectId';
+
+String projectNameHeroTag(String projectId) => 'project-name-$projectId';
+
+/// Crossfades between the two label widgets instead of letting Flutter's
+/// default Hero flight stretch one of them across the whole animated rect.
+/// Each label is drawn at its own natural orientation/size and simply faded
+/// in or out, so neither ever gets distorted mid-flight.
+///
+/// [reduceMotion] skips the crossfade entirely and jumps straight to the
+/// destination label, matching how the rest of the app treats that setting.
+HeroFlightShuttleBuilder projectNameHeroFlightShuttleBuilder(
+  bool reduceMotion,
+) {
+  return (
+    BuildContext flightContext,
+    Animation<double> animation,
+    HeroFlightDirection flightDirection,
+    BuildContext fromHeroContext,
+    BuildContext toHeroContext,
+  ) {
+    final fromHero = fromHeroContext.widget as Hero;
+    final toHero = toHeroContext.widget as Hero;
+
+    if (reduceMotion) return toHero.child;
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final t = animation.value.clamp(0.0, 1.0);
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Opacity(
+              opacity: 1 - t,
+              child: Center(child: fromHero.child),
+            ),
+            Opacity(
+              opacity: t,
+              child: Center(child: toHero.child),
+            ),
+          ],
+        );
+      },
+    );
+  };
+}
 
 /// A project tile for the home screen grid. [featured] gives the tall card
 /// with a preview of up to 4 tasks; otherwise it's a compact, name-only
@@ -20,6 +74,7 @@ class ProjectCard extends StatefulWidget {
     required this.onTap,
     required this.onDelete,
     this.featured = false,
+    this.reduceMotion = false,
   });
 
   final Project project;
@@ -27,6 +82,7 @@ class ProjectCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final bool featured;
+  final bool reduceMotion;
 
   @override
   State<ProjectCard> createState() => _ProjectCardState();
@@ -46,15 +102,27 @@ class _ProjectCardState extends State<ProjectCard> {
 
   Widget _header(BuildContext context, {required bool showDelete}) {
     final theme = Theme.of(context);
-    return Hero(
-      tag: projectHeaderHeroTag(widget.project.id),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Row(
-          children: [
-            Icon(Icons.folder, color: accentPalette[widget.project.colorIndex]),
-            const SizedBox(width: 8),
-            Expanded(
+    return Row(
+      children: [
+        Hero(
+          tag: projectIconHeroTag(widget.project.id),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Icon(
+              Icons.folder,
+              color: accentPalette[widget.project.colorIndex],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Hero(
+            tag: projectNameHeroTag(widget.project.id),
+            flightShuttleBuilder: projectNameHeroFlightShuttleBuilder(
+              widget.reduceMotion,
+            ),
+            child: Material(
+              type: MaterialType.transparency,
               child: Text(
                 widget.project.name,
                 style: theme.textTheme.titleMedium,
@@ -62,16 +130,16 @@ class _ProjectCardState extends State<ProjectCard> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (showDelete)
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
-                tooltip: 'Delete project',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _confirmDelete(context),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (showDelete)
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: 'Delete project',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _confirmDelete(context),
+          ),
+      ],
     );
   }
 
@@ -140,23 +208,32 @@ class _ProjectCardState extends State<ProjectCard> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Hero(
-                tag: projectHeaderHeroTag(widget.project.id),
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Hero(
+                    tag: projectIconHeroTag(widget.project.id),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Icon(
                         Icons.folder_outlined,
                         size: 18,
                         color: accentPalette[widget.project.colorIndex],
                       ),
-                      const SizedBox(width: 8),
-                      Text(widget.project.name),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Hero(
+                    tag: projectNameHeroTag(widget.project.id),
+                    flightShuttleBuilder: projectNameHeroFlightShuttleBuilder(
+                      widget.reduceMotion,
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: Text(widget.project.name),
+                    ),
+                  ),
+                ],
               ),
               if (_hovering) ...[
                 const SizedBox(width: 2),
