@@ -357,6 +357,7 @@ class _TaskPreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final priorityTag = NocturneTag.forPriority(task.priority);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -381,7 +382,8 @@ class _TaskPreviewRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          ?NocturneTag.forPriority(task.priority),
+          // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
+          if (priorityTag != null) priorityTag,
           if (task.hasSubtasks)
             Padding(
               padding: const EdgeInsets.only(left: 4),
