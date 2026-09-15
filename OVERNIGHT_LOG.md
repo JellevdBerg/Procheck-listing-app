@@ -22,3 +22,17 @@ right-click / trackpad secondary click), which is what this native app target
 actually receives — there's no separate touch/right-click ambiguity here.
 
 ---
+
+## Task 2: Remove wiggle from task shrink animation
+Status: **done**
+Files changed: `lib/widgets/pop_out_removal.dart`
+Notes: `PopOutRemoval` (the shared shrink-and-pop-out animation used for both
+task and project-card removal) layered a `_wiggle` rotation on top of the
+scale/size-factor collapse. Removed the `_wiggle` Animation and its
+`Transform.rotate` wrapper entirely; the scale-down, size collapse
+(via `Align`'s width/heightFactor) and fade are untouched.
+Assumptions: none — this is the only rotation/wiggle animation on the
+removal path (`WobbleCheckbox`'s wobble is a separate check/uncheck
+feedback animation, not the shrink animation, so left alone).
+
+---
