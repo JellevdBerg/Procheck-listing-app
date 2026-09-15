@@ -7,18 +7,24 @@ import '../models/task_template.dart';
 import '../providers/projects_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
+import 'blurred_dialog.dart';
 
 Future<Task?> showCreateTaskSheet(
   BuildContext context, {
   String? initialProjectId,
   TaskTemplate? initialTemplate,
 }) {
-  return showModalBottomSheet<Task>(
+  return showBlurredDialog<Task>(
     context: context,
-    isScrollControlled: true,
-    builder: (context) => _CreateTaskSheet(
-      initialProjectId: initialProjectId,
-      initialTemplate: initialTemplate,
+    builder: (context) => Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: _CreateTaskSheet(
+          initialProjectId: initialProjectId,
+          initialTemplate: initialTemplate,
+        ),
+      ),
     ),
   );
 }
@@ -60,12 +66,12 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
     final templates = ref.watch(taskTemplatesProvider);
     final projects = ref.watch(projectsProvider);
 
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

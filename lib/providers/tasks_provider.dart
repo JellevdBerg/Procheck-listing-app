@@ -180,14 +180,18 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _persist(task);
   }
 
-  void unfileTasksInProject(String projectId) {
-    for (final task in state) {
-      if (task.projectId == projectId) {
-        task.projectId = null;
-        unawaited(task.save());
-      }
+  /// Deletes every task that belongs to [projectId], along with their
+  /// subtasks (which live embedded in each task, so nothing else to clean
+  /// up). Used when the project itself is deleted.
+  void deleteTasksInProject(String projectId) {
+    final idsToDelete = state
+        .where((t) => t.projectId == projectId)
+        .map((t) => t.id)
+        .toSet();
+    if (idsToDelete.isEmpty) return;
+    for (final id in idsToDelete) {
+      unawaited(_box.delete(id));
     }
-    // New list instance so Riverpod notifies listeners of the mutation above.
-    state = [...state];
+    state = state.where((t) => !idsToDelete.contains(t.id)).toList();
   }
 }

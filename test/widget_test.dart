@@ -37,13 +37,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // Scoped to the open dialog: the home screen's persistent project search
+  // field is also a TextField and stays mounted (just visually behind the
+  // blurred dialog), so an unscoped `find.byType(TextField)` would match both.
+  Finder dialogTextField() => find.descendant(
+    of: find.byType(Dialog),
+    matching: find.byType(TextField),
+  );
+
   Future<void> createTask(WidgetTester tester, String name) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New task'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).first, name);
+    await tester.enterText(dialogTextField(), name);
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
   }
@@ -54,7 +62,7 @@ void main() {
     await tester.tap(find.text('New project'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), name);
+    await tester.enterText(dialogTextField(), name);
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
   }
@@ -82,7 +90,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'Buy milk');
+    await tester.enterText(dialogTextField(), 'Buy milk');
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
@@ -117,7 +125,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'Ship it');
+    await tester.enterText(dialogTextField(), 'Ship it');
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
@@ -242,4 +250,49 @@ void main() {
       expect(find.text('No tasks in this project yet.'), findsOneWidget);
     },
   );
+
+  testWidgets('deleting a project also deletes its tasks', (tester) async {
+    await pumpApp(tester);
+
+    await createProject(tester, 'Kitchen Remodel');
+    await tester.tap(find.text('Kitchen Remodel'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(dialogTextField(), 'Pick tiles');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pick tiles'), findsOneWidget);
+
+    // Back to the projects list, then delete the project via hover + the
+    // card's delete button.
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    final cardFinder = find.ancestor(
+      of: find.text('Kitchen Remodel'),
+      matching: find.byType(ProjectCard),
+    );
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(gesture.removePointer);
+    await gesture.addPointer(location: Offset.zero);
+    await tester.pumpAndSettle();
+    await gesture.moveTo(tester.getCenter(cardFinder));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: cardFinder,
+        matching: find.byIcon(Icons.delete_outline),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Confirm the "Delete project?" dialog.
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kitchen Remodel'), findsNothing);
+    expect(find.text('Pick tiles'), findsNothing);
+  });
 }

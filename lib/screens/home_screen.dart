@@ -7,6 +7,7 @@ import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/blurred_dialog.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/page_transitions.dart';
 import '../widgets/project_card.dart';
@@ -90,65 +91,93 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   void _showProjectsTabActions(BuildContext context) {
-    showModalBottomSheet(
+    showBlurredDialog(
       context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.checklist_rtl_rounded),
-              title: const Text('New task'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                showCreateTaskSheet(context);
-              },
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.checklist_rtl_rounded),
+                  title: const Text('New task'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    showCreateTaskSheet(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: const Text('New project'),
+                  onTap: () async {
+                    Navigator.of(dialogContext).pop();
+                    final result = await showProjectPromptDialog(
+                      context,
+                      title: 'New project',
+                      confirmLabel: 'Create',
+                    );
+                    if (result != null) {
+                      final (name, colorIndex) = result;
+                      ref
+                          .read(projectsProvider.notifier)
+                          .addProject(name, colorIndex: colorIndex);
+                    }
+                  },
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.folder_outlined),
-              title: const Text('New project'),
-              onTap: () async {
-                Navigator.of(sheetContext).pop();
-                final result = await showProjectPromptDialog(
-                  context,
-                  title: 'New project',
-                  confirmLabel: 'Create',
-                );
-                if (result != null) {
-                  final (name, colorIndex) = result;
-                  ref
-                      .read(projectsProvider.notifier)
-                      .addProject(name, colorIndex: colorIndex);
-                }
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ProjectsTab extends ConsumerWidget {
+class _ProjectsTab extends ConsumerStatefulWidget {
   const _ProjectsTab();
 
+  @override
+  ConsumerState<_ProjectsTab> createState() => _ProjectsTabState();
+}
+
+class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
   static const _featuredCardHeight = 280.0;
   static const _featuredCardMinWidth = 240.0;
   static const _gridPadding = 16.0;
 
+  final _searchController = TextEditingController();
+  String _query = '';
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final projects = ref.watch(projectsProvider);
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allProjects = ref.watch(projectsProvider);
     final tasks = ref.watch(tasksProvider);
     final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final unfiledTasks = tasks.where((t) => t.projectId == null).toList();
 
-    if (projects.isEmpty && unfiledTasks.isEmpty) {
+    if (allProjects.isEmpty && unfiledTasks.isEmpty) {
       return const _EmptyState(
         icon: Icons.checklist_rtl_rounded,
         message: 'No tasks yet.\nTap + to create your first task or project.',
       );
     }
+
+    final query = _query.trim().toLowerCase();
+    final projects = query.isEmpty
+        ? allProjects
+        : allProjects
+              .where((p) => p.name.toLowerCase().contains(query))
+              .toList();
 
     void openProject(String projectId) {
       ref.read(projectsProvider.notifier).touchProject(projectId);
@@ -175,6 +204,32 @@ class _ProjectsTab extends ConsumerWidget {
 
         return ListView(
           children: [
+            if (allProjects.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search projects',
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'Clear search',
+                            onPressed: () => setState(() {
+                              _searchController.clear();
+                              _query = '';
+                            }),
+                          ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
             if (featuredProjects.isNotEmpty) ...[
               const _SectionHeader('Projects'),
               Padding(
@@ -203,6 +258,18 @@ class _ProjectsTab extends ConsumerWidget {
                           .deleteProject(project.id),
                     );
                   },
+                ),
+              ),
+            ] else if (query.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 32,
+                  horizontal: 24,
+                ),
+                child: Text(
+                  'No projects match "${_query.trim()}".',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ),
             ],

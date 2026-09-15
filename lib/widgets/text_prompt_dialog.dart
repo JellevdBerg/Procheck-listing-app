@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../providers/settings_provider.dart';
+import 'blurred_dialog.dart';
 
 /// A simple dialog that prompts for a single line of text.
 /// Returns the trimmed text, or null if cancelled / left empty.
@@ -11,7 +12,7 @@ Future<String?> showTextPromptDialog(
   String confirmLabel = 'Save',
 }) {
   final controller = TextEditingController(text: initialValue);
-  return showDialog<String>(
+  return showBlurredDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
@@ -53,7 +54,7 @@ Future<(String, int)?> showProjectPromptDialog(
 }) {
   final controller = TextEditingController(text: initialValue);
   var selectedColor = initialColorIndex;
-  return showDialog<(String, int)>(
+  return showBlurredDialog<(String, int)>(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
@@ -117,7 +118,7 @@ Future<bool> showConfirmDialog(
   required String message,
   String confirmLabel = 'Delete',
 }) async {
-  final result = await showDialog<bool>(
+  final result = await showBlurredDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
