@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/project.dart';
+import '../models/task.dart';
 import '../models/task_template.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
@@ -32,7 +34,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() => setState(() {}));
   }
 
@@ -69,27 +71,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             tabs: const [
               Tab(text: 'Projects'),
               Tab(text: 'Templates'),
+              Tab(text: 'Archived'),
             ],
           ),
         ),
         body: TabBarView(
           controller: _tabController,
-          children: const [_ProjectsTab(), _TemplatesTab()],
+          children: const [_ProjectsTab(), _TemplatesTab(), _ArchivedTab()],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        floatingActionButton: _tabController.index == 0
-            ? FloatingActionButton(
-                onPressed: () => _showProjectsTabActions(context),
-                child: const Icon(Icons.add),
-              )
-            : FloatingActionButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const TaskTemplateEditorScreen(),
-                  ),
-                ),
-                child: const Icon(Icons.add),
+        floatingActionButton: switch (_tabController.index) {
+          0 => FloatingActionButton(
+            onPressed: () => _showProjectsTabActions(context),
+            child: const Icon(Icons.add),
+          ),
+          1 => FloatingActionButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const TaskTemplateEditorScreen(),
               ),
+            ),
+            child: const Icon(Icons.add),
+          ),
+          // Archived tab: nothing to create here.
+          _ => null,
+        },
       ),
     );
   }
@@ -165,7 +171,10 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final allProjects = ref.watch(projectsProvider);
+    final allProjects = ref
+        .watch(projectsProvider)
+        .where((p) => !p.archived)
+        .toList();
     final tasks = ref.watch(tasksProvider);
     final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final unfiledTasks = tasks.where((t) => t.projectId == null).toList();
@@ -259,6 +268,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                           child: ProjectCard(
                             project: project,
                             featured: true,
+                            reduceMotion: reduceMotion,
                             tasks: tasks
                                 .where((t) => t.projectId == project.id)
                                 .toList(),
@@ -301,6 +311,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                             .deleteProject(project.id),
                         builder: (context, triggerRemoval) => ProjectCard(
                           project: project,
+                          reduceMotion: reduceMotion,
                           tasks: tasks
                               .where((t) => t.projectId == project.id)
                               .toList(),
@@ -314,19 +325,36 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
             ],
             if (unfiledTasks.isNotEmpty) ...[
               const _SectionHeader('Tasks'),
-              for (final task in unfiledTasks)
-                PopOutRemoval(
-                  key: ValueKey(task.id),
-                  reduceMotion: reduceMotion,
-                  shrinkWidth: false,
-                  onRemoved: () =>
-                      ref.read(tasksProvider.notifier).deleteTask(task.id),
-                  builder: (context, triggerRemoval) => TaskTile(
-                    task: task,
-                    onDelete: triggerRemoval,
-                    autoRemoveWhenChecked: true,
-                  ),
-                ),
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: unfiledTasks.length,
+                onReorderItem: (oldIndex, newIndex) {
+                  final reordered = [...unfiledTasks];
+                  final moved = reordered.removeAt(oldIndex);
+                  reordered.insert(newIndex, moved);
+                  ref
+                      .read(tasksProvider.notifier)
+                      .reorderTasks(reordered.map((t) => t.id).toList());
+                },
+                itemBuilder: (context, index) {
+                  final task = unfiledTasks[index];
+                  return PopOutRemoval(
+                    key: ValueKey(task.id),
+                    reduceMotion: reduceMotion,
+                    shrinkWidth: false,
+                    onRemoved: () =>
+                        _deleteUnfiledTaskWithUndo(context, ref, task),
+                    builder: (context, triggerRemoval) => TaskTile(
+                      task: task,
+                      onDelete: triggerRemoval,
+                      autoRemoveWhenChecked: true,
+                      reorderIndex: index,
+                    ),
+                  );
+                },
+              ),
             ],
             const SizedBox(height: 80),
           ],
@@ -334,6 +362,27 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
       },
     );
   }
+}
+
+/// Deletes an unfiled task (whether via the trash icon or auto-removal
+/// after being checked off) but offers a few seconds to undo it — standalone
+/// tasks have no project to recover them from, so an accidental removal
+/// would otherwise be unrecoverable.
+void _deleteUnfiledTaskWithUndo(
+  BuildContext context,
+  WidgetRef ref,
+  Task task,
+) {
+  ref.read(tasksProvider.notifier).deleteTask(task.id);
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text('"${task.title}" deleted'),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => ref.read(tasksProvider.notifier).restoreTask(task),
+      ),
+    ),
+  );
 }
 
 class _TemplatesTab extends ConsumerWidget {
@@ -372,6 +421,130 @@ class _TemplatesTab extends ConsumerWidget {
           ),
         const SizedBox(height: 80),
       ],
+    );
+  }
+}
+
+class _ArchivedTab extends ConsumerStatefulWidget {
+  const _ArchivedTab();
+
+  @override
+  ConsumerState<_ArchivedTab> createState() => _ArchivedTabState();
+}
+
+class _ArchivedTabState extends ConsumerState<_ArchivedTab> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tasks = ref.watch(tasksProvider);
+    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
+    final archived =
+        ref.watch(projectsProvider).where((p) => p.archived).toList()..sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
+
+    if (archived.isEmpty) {
+      return const _EmptyState(
+        icon: Icons.archive_outlined,
+        message: 'No archived projects.\nArchive a project from its detail screen to see it here.',
+      );
+    }
+
+    final query = _query.trim().toLowerCase();
+    final visible = query.isEmpty
+        ? archived
+        : archived.where((p) => p.name.toLowerCase().contains(query)).toList();
+
+    return ListView(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              hintText: 'Search archived projects',
+              isDense: true,
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      tooltip: 'Clear search',
+                      onPressed: () => setState(() {
+                        _searchController.clear();
+                        _query = '';
+                      }),
+                    ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            child: Text(
+              'No archived projects match "${_query.trim()}".',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          )
+        else
+          for (final project in visible)
+            _ArchivedProjectRow(
+              project: project,
+              taskCount: tasks.where((t) => t.projectId == project.id).length,
+              reduceMotion: reduceMotion,
+            ),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+}
+
+class _ArchivedProjectRow extends ConsumerWidget {
+  const _ArchivedProjectRow({
+    required this.project,
+    required this.taskCount,
+    required this.reduceMotion,
+  });
+
+  final Project project;
+  final int taskCount;
+  final bool reduceMotion;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final color = accentPalette[project.colorIndex];
+    return ListTile(
+      leading: Icon(Icons.folder, color: color),
+      title: Text(
+        '${project.name} ($taskCount task${taskCount == 1 ? '' : 's'})',
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.unarchive_outlined),
+        tooltip: 'Unarchive',
+        onPressed: () =>
+            ref.read(projectsProvider.notifier).unarchiveProject(project.id),
+      ),
+      onTap: () {
+        ref.read(projectsProvider.notifier).touchProject(project.id);
+        pushSlideIn(
+          context,
+          ProjectDetailScreen(projectId: project.id),
+          reduceMotion: reduceMotion,
+        );
+      },
     );
   }
 }

@@ -10,6 +10,7 @@ class Project extends HiveObject {
     required this.createdAt,
     this.lastOpenedAt,
     this.colorIndex = 0,
+    this.archived = false,
   });
 
   @HiveField(0)
@@ -32,12 +33,19 @@ class Project extends HiveObject {
   @HiveField(4, defaultValue: 0)
   int colorIndex;
 
+  /// Archived projects drop out of the main grid (and its search) without
+  /// being destroyed — their tasks, color, and history are untouched, and
+  /// they're still browsable/searchable from the Archived tab.
+  @HiveField(5, defaultValue: false)
+  bool archived;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'createdAt': createdAt.toIso8601String(),
     'lastOpenedAt': lastOpenedAt?.toIso8601String(),
     'colorIndex': colorIndex,
+    'archived': archived,
   };
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -48,5 +56,6 @@ class Project extends HiveObject {
         ? null
         : DateTime.parse(json['lastOpenedAt'] as String),
     colorIndex: json['colorIndex'] as int? ?? 0,
+    archived: json['archived'] as bool? ?? false,
   );
 }

@@ -84,6 +84,32 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     _sortState();
   }
 
+  /// Archives [id]: it drops out of the main grid/search without deleting
+  /// anything, and stays reachable from the Archived tab.
+  void archiveProject(String id) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.archived = true;
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+  }
+
+  /// Puts an archived project back in the main grid.
+  void unarchiveProject(String id) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.archived = false;
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+    _sortState();
+  }
+
   void deleteProject(String id) {
     // Deleting a project takes its tasks (and their subtasks) with it.
     _ref.read(tasksProvider.notifier).deleteTasksInProject(id);

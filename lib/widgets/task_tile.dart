@@ -17,6 +17,7 @@ class TaskTile extends ConsumerStatefulWidget {
     required this.task,
     required this.onDelete,
     this.autoRemoveWhenChecked = false,
+    this.reorderIndex,
   });
 
   final Task task;
@@ -31,6 +32,12 @@ class TaskTile extends ConsumerStatefulWidget {
   /// checked off, they remove themselves — but only after the check-off
   /// bounce has had time to play, never instantly.
   final bool autoRemoveWhenChecked;
+
+  /// This tile's position within an enclosing `ReorderableListView`. When
+  /// set, a drag handle is shown so the task can be dragged to reorder it;
+  /// when null (the tile isn't inside a reorderable list), no handle is
+  /// shown.
+  final int? reorderIndex;
 
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
@@ -167,6 +174,17 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                 onPressed: widget.onDelete,
               ),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              if (widget.reorderIndex != null)
+                ReorderableDragStartListener(
+                  index: widget.reorderIndex!,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(
+                      Icons.drag_indicator,
+                      color: Theme.of(context).hintColor,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

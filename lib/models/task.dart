@@ -16,7 +16,9 @@ class Task extends HiveObject {
     this.projectId,
     this.templateId,
     this.dueDate,
-  }) : subtasks = subtasks ?? [];
+    double? sortOrder,
+  }) : subtasks = subtasks ?? [],
+       sortOrder = sortOrder ?? createdAt.millisecondsSinceEpoch.toDouble();
 
   @HiveField(0)
   String id;
@@ -49,6 +51,18 @@ class Task extends HiveObject {
   /// and cancelled outright once the task is checked off or deleted.
   @HiveField(8)
   DateTime? dueDate;
+
+  /// Controls this task's position within whichever list it's shown in (a
+  /// project's task list, or the home screen's unfiled tasks) — higher
+  /// sorts first. Defaults to its creation time so new tasks land at the
+  /// top like before; dragging a task to reorder it re-assigns this to a
+  /// small integer instead (see TasksNotifier.reorderTasks), which — being
+  /// far smaller than any real timestamp — always sorts below any
+  /// not-yet-manually-ordered task without disturbing the others' relative
+  /// order. Tasks saved before this field existed default to 0, i.e. below
+  /// everything else, falling back to createdAt to order amongst themselves.
+  @HiveField(9, defaultValue: 0.0)
+  double sortOrder;
 
   bool get hasSubtasks => subtasks.isNotEmpty;
 
