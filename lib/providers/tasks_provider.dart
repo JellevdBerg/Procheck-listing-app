@@ -41,17 +41,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _replace(task);
   }
 
-  /// Tasks with no project are meant to be quick one-offs: once checked
-  /// off, they're done and clutter the list, so they're removed instead
-  /// of persisted. Tasks that belong to a project are kept as usual.
-  void _persistOrRemoveIfDone(Task task) {
-    if (task.isChecked && task.projectId == null) {
-      deleteTask(task.id);
-    } else {
-      _persist(task);
-    }
-  }
-
   Task addBlankTask({required String title, String? projectId}) {
     return _addTask(title: title, projectId: projectId, subtasks: const []);
   }
@@ -124,7 +113,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     for (final subtask in task.subtasks) {
       subtask.isChecked = newValue;
     }
-    _persistOrRemoveIfDone(task);
+    _persist(task);
   }
 
   void toggleSubtask(String taskId, String subtaskId) {
@@ -137,7 +126,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       }
     }
     task.isChecked = task.subtasks.every((s) => s.isChecked);
-    _persistOrRemoveIfDone(task);
+    _persist(task);
   }
 
   void setTaskNotes(String taskId, String? notes) {

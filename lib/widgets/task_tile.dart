@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,13 +12,25 @@ import 'wobble_checkbox.dart';
 /// its subtasks below and a notes panel beside them. Checking every
 /// subtask automatically checks the task, and vice versa.
 class TaskTile extends ConsumerStatefulWidget {
-  const TaskTile({super.key, required this.task, required this.onDelete});
+  const TaskTile({
+    super.key,
+    required this.task,
+    required this.onDelete,
+    this.autoRemoveWhenChecked = false,
+  });
 
   final Task task;
 
-  /// Called when the delete button is pressed. The caller is responsible
-  /// for actually removing the task (typically after a removal animation).
+  /// Called when the delete button is pressed (or, with
+  /// [autoRemoveWhenChecked], once checking the task off finishes). The
+  /// caller is responsible for actually removing the task — typically
+  /// after a removal animation.
   final VoidCallback onDelete;
+
+  /// Standalone (no-project) tasks are meant to be quick one-offs: once
+  /// checked off, they remove themselves — but only after the check-off
+  /// bounce has had time to play, never instantly.
+  final bool autoRemoveWhenChecked;
 
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
@@ -31,10 +45,25 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   late final TextEditingController _notesController;
   late final FocusNode _notesFocusNode;
   final _newSubtaskController = TextEditingController();
+  Timer? _autoRemoveTimer;
+
+  // Snapshotting the checked flag as a primitive rather than comparing
+  // oldWidget.task.isChecked to widget.task.isChecked directly: Task is a
+  // mutable Hive object fetched by reference, so toggling it mutates the
+  // exact same instance already held by the currently-mounted widget. By
+  // the time didUpdateWidget runs, oldWidget.task and widget.task are the
+  // identical, already-mutated object — comparing a field on them can never
+  // see a "before" value. A bool, being a value type, is copied at the
+  // point it's read and stays put regardless of later mutation — but it
+  // must be captured eagerly in initState, not via a `late` initializer,
+  // since a `late` field would defer that same first read until it's used
+  // inside didUpdateWidget, by which point the mutation has already landed.
+  bool _lastIsChecked = false;
 
   @override
   void initState() {
     super.initState();
+    _lastIsChecked = widget.task.isChecked;
     _notesController = TextEditingController(text: widget.task.notes ?? '');
     _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
   }
@@ -48,10 +77,31 @@ class _TaskTileState extends ConsumerState<TaskTile> {
         widget.task.notes != oldWidget.task.notes) {
       _notesController.text = widget.task.notes ?? '';
     }
+
+    final wasChecked = _lastIsChecked;
+    final isChecked = widget.task.isChecked;
+    _lastIsChecked = isChecked;
+
+    if (!widget.autoRemoveWhenChecked) return;
+    if (isChecked && !wasChecked) {
+      // Let the check-off bounce actually play before this tile is
+      // removed out from under it — an instant removal would tear the
+      // checkbox down mid-animation and the bounce would never be seen.
+      final reduceMotion = ref.read(settingsProvider).reduceMotion;
+      if (reduceMotion) {
+        widget.onDelete();
+      } else {
+        _autoRemoveTimer?.cancel();
+        _autoRemoveTimer = Timer(WobbleCheckbox.duration, widget.onDelete);
+      }
+    } else if (!isChecked && wasChecked) {
+      _autoRemoveTimer?.cancel();
+    }
   }
 
   @override
   void dispose() {
+    _autoRemoveTimer?.cancel();
     _notesFocusNode.removeListener(_onNotesFocusChange);
     _notesFocusNode.dispose();
     _notesController.dispose();

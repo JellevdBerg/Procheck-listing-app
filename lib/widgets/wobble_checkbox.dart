@@ -15,6 +15,12 @@ class WobbleCheckbox extends StatefulWidget {
   final ValueChanged<bool?> onChanged;
   final bool reduceMotion;
 
+  /// How long the wobble takes to play out. Exposed so other widgets that
+  /// need to sequence something after the bounce (e.g. auto-removing a
+  /// completed standalone task) can wait for the same duration rather than
+  /// guessing at a matching one of their own.
+  static const duration = Duration(milliseconds: 350);
+
   @override
   State<WobbleCheckbox> createState() => _WobbleCheckboxState();
 }
@@ -23,7 +29,7 @@ class _WobbleCheckboxState extends State<WobbleCheckbox>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 350),
+    duration: WobbleCheckbox.duration,
   );
 
   late final Animation<double> _wobble = TweenSequence<double>([

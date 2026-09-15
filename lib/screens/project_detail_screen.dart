@@ -55,10 +55,28 @@ class ProjectDetailScreen extends ConsumerWidget {
       ),
     );
 
+    // The top bar gets its own subtle tint derived from the project color —
+    // just enough to feel connected to the (much stronger) hero sidebar,
+    // without depending on the OS light/dark background or overpowering the
+    // neutral task area. A fixed, computed foreground (rather than the
+    // theme's default) keeps the back/edit/delete icons readable against it
+    // regardless of how light or dark that tint ends up being.
+    final appBarColor = Color.lerp(
+      baseTheme.colorScheme.surface,
+      accentColor,
+      0.10,
+    )!;
+    final onAppBarColor = appBarColor.computeLuminance() > 0.5
+        ? Colors.black87
+        : Colors.white;
+
     return Theme(
       data: projectTheme,
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: appBarColor,
+          foregroundColor: onAppBarColor,
+          elevation: 0,
           actions: [
             IconButton(
               icon: const Icon(Icons.edit_outlined),
@@ -154,9 +172,9 @@ class _ProjectHeroSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      width: 88,
+      width: 104,
       decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.10),
+        color: accentColor.withValues(alpha: 0.16),
         border: Border(right: BorderSide(color: theme.dividerColor)),
       ),
       child: Hero(
@@ -166,21 +184,30 @@ class _ProjectHeroSidebar extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 20),
-              Icon(Icons.folder, color: accentColor, size: 28),
+              // Open, since this is the currently-opened project; the main
+              // menu's ProjectCard uses the closed variant instead, and the
+              // Hero flight between the two is what carries the visual
+              // "opening" transition (Flutter has no built-in animated icon
+              // pair for a folder morphing open, so this is the closest
+              // natural transition available without a bespoke icon asset).
+              Icon(Icons.folder_open, color: accentColor, size: 28),
               const SizedBox(height: 16),
               Expanded(
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      project.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: accentColor,
-                        fontWeight: FontWeight.w600,
+                child: Align(
+                  alignment: Alignment.center,
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        project.name,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: accentColor,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),

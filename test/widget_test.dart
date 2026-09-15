@@ -251,6 +251,32 @@ void main() {
   });
 
   testWidgets(
+    'checking off an unfiled task plays the bounce before removing it',
+    (tester) async {
+      await pumpApp(tester);
+
+      await createTask(tester, 'Bouncy one-off');
+      final checkbox = find.descendant(
+        of: find.ancestor(
+          of: find.text('Bouncy one-off'),
+          matching: find.byType(ListTile),
+        ),
+        matching: find.byType(Checkbox),
+      );
+      await tester.tap(checkbox);
+
+      // Immediately after checking it off — and partway through the bounce
+      // — the task must still be on screen. An instant removal would tear
+      // the checkbox out from under its own animation.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Bouncy one-off'), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Bouncy one-off'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'a new project shows as a featured card, hover reveals delete, tap opens it',
     (tester) async {
       await pumpApp(tester);

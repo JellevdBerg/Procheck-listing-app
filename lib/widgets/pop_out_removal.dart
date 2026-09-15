@@ -42,30 +42,27 @@ class _PopOutRemovalState extends State<PopOutRemoval>
     duration: const Duration(milliseconds: 340),
   );
 
-  // A quick outward pop before the shrink, rather than a flat linear
-  // collapse — the bit that makes this read as playful.
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 1.15,
-        end: 0.0,
-      ).chain(CurveTween(curve: Curves.easeInBack)),
-      weight: 75,
-    ),
-  ]).animate(_controller);
+  // Shrinks from the very first frame — never grows past 1.0 — then
+  // accelerates into the finish, which is what reads as a "pop" (a bubble
+  // collapsing) rather than a flat linear fade. Also drives the widget's
+  // real layout size via Align's width/heightFactor, so it must stay
+  // within [0, 1] throughout (those reject negative values).
+  late final Animation<double> _sizeFactor = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInExpo,
+  );
+
+  // A small wiggle layered on top of the shrink for a playful touch,
+  // without ever pushing the scale above 1.0.
+  late final Animation<double> _wiggle = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.10), weight: 1),
+    TweenSequenceItem(tween: Tween(begin: 0.10, end: -0.06), weight: 1),
+    TweenSequenceItem(tween: Tween(begin: -0.06, end: 0.0), weight: 1),
+  ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
   late final Animation<double> _opacity = CurvedAnimation(
     parent: _controller,
-    curve: const Interval(0.35, 1.0, curve: Curves.easeIn),
-  );
-
-  // Drives the widget's real layout size — must stay within [0, 1] (unlike
-  // the bouncier _scale/_opacity above) since Align's width/heightFactor
-  // reject negative values.
-  late final Animation<double> _sizeFactor = CurvedAnimation(
-    parent: _controller,
-    curve: Curves.easeInCubic,
+    curve: const Interval(0.25, 1.0, curve: Curves.easeIn),
   );
 
   bool _removing = false;
@@ -96,13 +93,16 @@ class _PopOutRemovalState extends State<PopOutRemoval>
       animation: _controller,
       child: child,
       builder: (context, child) {
-        final collapse = 1 - _sizeFactor.value;
+        final collapse = (1 - _sizeFactor.value).clamp(0.0, 1.0);
         return Align(
           widthFactor: widget.shrinkWidth ? collapse : 1,
           heightFactor: collapse,
           child: Opacity(
             opacity: (1 - _opacity.value).clamp(0.0, 1.0),
-            child: Transform.scale(scale: _scale.value, child: child),
+            child: Transform.rotate(
+              angle: _wiggle.value,
+              child: Transform.scale(scale: collapse, child: child),
+            ),
           ),
         );
       },
