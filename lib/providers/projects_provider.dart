@@ -5,7 +5,9 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
+import '../models/activity_entry.dart';
 import '../models/project.dart';
+import '../models/project_comment.dart';
 import 'tasks_provider.dart';
 
 final projectsProvider = StateNotifierProvider<ProjectsNotifier, List<Project>>(
@@ -45,6 +47,13 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
       name: name,
       createdAt: DateTime.now(),
       colorIndex: colorIndex,
+    );
+    project.activityLog.add(
+      ActivityEntry(
+        kindIndex: ActivityKind.projectCreated.index,
+        description: 'You created this project',
+        timestamp: DateTime.now(),
+      ),
     );
     unawaited(_box.put(project.id, project));
     state = [...state, project];
@@ -90,6 +99,50 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     final project = _box.get(id);
     if (project == null) return;
     project.archived = true;
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+  }
+
+  void toggleFavorite(String id) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.favorite = !project.favorite;
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+  }
+
+  /// Appends an entry to [id]'s Activity log — called by [TasksNotifier] for
+  /// task-level events (added/completed/edited) on tasks filed under a
+  /// project, in addition to [addProject]'s own "created" entry.
+  void logActivity(String id, ActivityEntry entry) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.activityLog = [...project.activityLog, entry];
+    unawaited(project.save());
+    state = [
+      for (final p in state)
+        if (p.id == id) project else p,
+    ];
+  }
+
+  void addComment(String id, String author, String text) {
+    final project = _box.get(id);
+    if (project == null) return;
+    project.comments = [
+      ...project.comments,
+      ProjectComment(
+        id: const Uuid().v4(),
+        author: author,
+        text: text,
+        timestamp: DateTime.now(),
+      ),
+    ];
     unawaited(project.save());
     state = [
       for (final p in state)

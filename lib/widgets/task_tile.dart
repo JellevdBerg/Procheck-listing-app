@@ -1,11 +1,16 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/attachment.dart';
 import '../models/task.dart';
+import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import 'nocturne/nocturne_widgets.dart';
 import 'wobble_checkbox.dart';
 
 /// A single task row: a checkbox + title that expands in place to reveal
@@ -141,13 +146,13 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     final reduceMotion = ref.watch(settingsProvider).reduceMotion;
 
     // Once expanded, the notes panel already shows the full text, so the
-    // collapsed preview line would just be a duplicate.
+    // collapsed preview line would just be a duplicate. Due date shows as
+    // its own tag (below) rather than duplicated into this text line.
     final subtitleParts = <String>[
       if (!_expanded && (task.notes ?? '').trim().isNotEmpty)
         task.notes!.trim(),
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
-      if (task.dueDate != null) 'Due ${formatDueDate(task.dueDate!)}',
     ];
 
     return Column(
@@ -175,6 +180,17 @@ class _TaskTileState extends ConsumerState<TaskTile> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ?NocturneTag.forPriority(task.priority),
+              if (task.priority != TaskPriority.none)
+                const SizedBox(width: 6),
+              if (task.dueDate != null) ...[
+                NocturneTag(
+                  label: formatDueDate(task.dueDate!),
+                  icon: Icons.access_time,
+                  outline: true,
+                ),
+                const SizedBox(width: 6),
+              ],
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
@@ -283,23 +299,37 @@ class _ExpandedTaskDetail extends ConsumerWidget {
             controller: notesController,
             focusNode: notesFocusNode,
           );
+          final notesAndAttachments = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              notes,
+              const SizedBox(height: 16),
+              _AttachmentsSection(task: task),
+            ],
+          );
 
-          final dueDateRow = Padding(
+          final topRow = Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _DueDateRow(task: task),
+            child: Row(
+              children: [
+                Expanded(child: _DueDateRow(task: task)),
+                const SizedBox(width: 16),
+                _PriorityRow(task: task),
+              ],
+            ),
           );
 
           if (constraints.maxWidth >= breakpoint) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                dueDateRow,
+                topRow,
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 3, child: subtasks),
                     const SizedBox(width: 16),
-                    Expanded(flex: 2, child: notes),
+                    Expanded(flex: 2, child: notesAndAttachments),
                   ],
                 ),
               ],
@@ -307,7 +337,12 @@ class _ExpandedTaskDetail extends ConsumerWidget {
           }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [dueDateRow, notes, const SizedBox(height: 12), subtasks],
+            children: [
+              topRow,
+              notesAndAttachments,
+              const SizedBox(height: 12),
+              subtasks,
+            ],
           );
         },
       ),
@@ -393,6 +428,128 @@ class _DueDateRow extends ConsumerWidget {
       time.minute,
     );
     ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
+  }
+}
+
+class _PriorityRow extends ConsumerWidget {
+  const _PriorityRow({required this.task});
+
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return NocturneSegmented<TaskPriority>(
+      options: TaskPriority.values,
+      value: task.priority,
+      labelBuilder: (p) => p.label,
+      onChanged: (p) =>
+          ref.read(tasksProvider.notifier).setTaskPriority(task.id, p),
+    );
+  }
+}
+
+class _AttachmentsSection extends ConsumerWidget {
+  const _AttachmentsSection({required this.task});
+
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'ATTACHMENTS',
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 0.04,
+            color: theme.hintColor,
+          ),
+        ),
+        const SizedBox(height: 6),
+        for (var i = 0; i < task.attachments.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _AttachmentChip(
+              attachment: task.attachments[i],
+              onRemove: () => ref
+                  .read(tasksProvider.notifier)
+                  .removeAttachment(task.id, i),
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: NocturneButton(
+            label: 'Add attachment',
+            icon: Icons.attach_file,
+            dense: true,
+            onPressed: () => _pickAttachments(ref),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickAttachments(WidgetRef ref) async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final attachments = result.files
+        .map(
+          (f) => Attachment(
+            name: f.name,
+            size: f.size,
+            path: kIsWeb ? null : f.path,
+          ),
+        )
+        .toList();
+    ref.read(tasksProvider.notifier).addAttachments(task.id, attachments);
+  }
+}
+
+class _AttachmentChip extends StatelessWidget {
+  const _AttachmentChip({required this.attachment, required this.onRemove});
+
+  final Attachment attachment;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.insert_drive_file_outlined, size: 15, color: theme.hintColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              attachment.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            attachment.sizeLabel,
+            style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: onRemove,
+            child: Icon(Icons.close, size: 13, color: theme.hintColor),
+          ),
+        ],
+      ),
+    );
   }
 }
 

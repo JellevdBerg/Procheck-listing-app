@@ -1,35 +1,38 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'template_subtask.dart';
+part of 'attachment.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class TemplateSubtaskAdapter extends TypeAdapter<TemplateSubtask> {
+class AttachmentAdapter extends TypeAdapter<Attachment> {
   @override
-  final int typeId = 3;
+  final int typeId = 5;
 
   @override
-  TemplateSubtask read(BinaryReader reader) {
+  Attachment read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return TemplateSubtask(
-      id: fields[0] as String,
-      title: fields[1] as String,
+    return Attachment(
+      name: fields[0] as String,
+      size: fields[1] as int,
+      path: fields[2] as String?,
     );
   }
 
   @override
-  void write(BinaryWriter writer, TemplateSubtask obj) {
+  void write(BinaryWriter writer, Attachment obj) {
     writer
-      ..writeByte(2)
+      ..writeByte(3)
       ..writeByte(0)
-      ..write(obj.id)
+      ..write(obj.name)
       ..writeByte(1)
-      ..write(obj.title);
+      ..write(obj.size)
+      ..writeByte(2)
+      ..write(obj.path);
   }
 
   @override
@@ -38,7 +41,7 @@ class TemplateSubtaskAdapter extends TypeAdapter<TemplateSubtask> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TemplateSubtaskAdapter &&
+      other is AttachmentAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

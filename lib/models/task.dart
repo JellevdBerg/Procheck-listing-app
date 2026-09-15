@@ -1,6 +1,8 @@
 import 'package:hive/hive.dart';
 
+import 'attachment.dart';
 import 'subtask.dart';
+import 'task_priority.dart';
 
 part 'task.g.dart';
 
@@ -17,7 +19,10 @@ class Task extends HiveObject {
     this.templateId,
     this.dueDate,
     double? sortOrder,
+    this.priorityIndex = 0,
+    List<Attachment>? attachments,
   }) : subtasks = subtasks ?? [],
+       attachments = attachments ?? [],
        sortOrder = sortOrder ?? createdAt.millisecondsSinceEpoch.toDouble();
 
   @HiveField(0)
@@ -64,6 +69,17 @@ class Task extends HiveObject {
   @HiveField(9, defaultValue: 0.0)
   double sortOrder;
 
+  /// [TaskPriority.index] — stored as a plain int rather than a Hive enum
+  /// type, since it's just a small fixed set of values.
+  @HiveField(10, defaultValue: 0)
+  int priorityIndex;
+
+  @HiveField(11, defaultValue: [])
+  List<Attachment> attachments;
+
+  TaskPriority get priority => TaskPriority.fromIndex(priorityIndex);
+  set priority(TaskPriority value) => priorityIndex = value.index;
+
   bool get hasSubtasks => subtasks.isNotEmpty;
 
   int get completedSubtaskCount =>
@@ -83,6 +99,8 @@ class Task extends HiveObject {
     'templateId': templateId,
     'dueDate': dueDate?.toIso8601String(),
     'sortOrder': sortOrder,
+    'priorityIndex': priorityIndex,
+    'attachments': attachments.map((a) => a.toJson()).toList(),
   };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -100,5 +118,9 @@ class Task extends HiveObject {
         ? null
         : DateTime.parse(json['dueDate'] as String),
     sortOrder: (json['sortOrder'] as num?)?.toDouble(),
+    priorityIndex: json['priorityIndex'] as int? ?? 0,
+    attachments: (json['attachments'] as List<dynamic>? ?? [])
+        .map((a) => Attachment.fromJson(a as Map<String, dynamic>))
+        .toList(),
   );
 }

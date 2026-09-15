@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:procheck/data/hive_setup.dart';
 import 'package:procheck/main.dart';
+import 'package:procheck/screens/project_detail_overlay.dart';
 import 'package:procheck/widgets/project_card.dart';
+import 'package:procheck/widgets/sidebar/app_sidebar.dart';
 import 'package:procheck/widgets/task_tile.dart';
 
 void main() {
@@ -28,40 +30,51 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  // The app now shows a brief splash screen before the home screen; advance
-  // past its timer (fake-async under the hood, so this doesn't slow the
-  // test down for real) before interacting with anything.
+  // The app now shows a brief splash screen before the shell; advance past
+  // its timer (fake-async under the hood, so this doesn't slow the test
+  // down for real) before interacting with anything.
   Future<void> pumpApp(WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: ProcheckApp()));
     await tester.pump(const Duration(milliseconds: 1200));
     await tester.pumpAndSettle();
   }
 
-  // Scoped to the open dialog: the home screen's persistent project search
-  // field is also a TextField and stays mounted (just visually behind the
-  // blurred dialog), so an unscoped `find.byType(TextField)` would match both.
+  // Scoped to the open dialog: some screens' own TextFields (search boxes,
+  // comment boxes) stay mounted behind a blurred dialog, so an unscoped
+  // `find.byType(TextField)` could match more than one.
   Finder dialogTextField() => find.descendant(
     of: find.byType(Dialog),
     matching: find.byType(TextField),
   );
 
-  Future<void> createTask(WidgetTester tester, String name) async {
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('New task'));
-    await tester.pumpAndSettle();
+  // The project detail overlay stays mounted underneath — well, the
+  // Projects screen stays mounted *underneath* the overlay while it's open,
+  // for the close-morph to animate back to — so finders inside the overlay
+  // (e.g. its own "New task" button) must be scoped to it to avoid matching
+  // the Projects screen's own same-labeled button too.
+  Finder overlayFinder() => find.byType(ProjectDetailOverlay);
 
+  Future<void> createProject(WidgetTester tester, String name) async {
+    await tester.tap(find.text('New project'));
+    await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
   }
 
-  Future<void> createProject(WidgetTester tester, String name) async {
-    await tester.tap(find.byIcon(Icons.add));
+  Future<void> createTask(WidgetTester tester, String name) async {
+    await tester.tap(find.text('New task'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('New project'));
+    await tester.enterText(dialogTextField(), name);
+    await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
+  }
 
+  Future<void> createTaskInOverlay(WidgetTester tester, String name) async {
+    await tester.tap(
+      find.descendant(of: overlayFinder(), matching: find.text('New task')),
+    );
+    await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
@@ -88,12 +101,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> hoverOver(WidgetTester tester, Finder finder) async {
+    // Earlier tests leave projects behind (see the note on setUpAll above),
+    // so by the time a later test runs there can be enough cards that the
+    // one it cares about has scrolled out of view — moving a pointer to an
+    // off-screen coordinate never triggers the MouseRegion's hover.
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(gesture.removePointer);
+    await gesture.addPointer(location: Offset.zero);
+    await tester.pumpAndSettle();
+    await gesture.moveTo(tester.getCenter(finder));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows empty state, then a created task appears in the list', (
     tester,
   ) async {
     await pumpApp(tester);
 
-    expect(find.textContaining('No tasks yet'), findsOneWidget);
+    expect(find.textContaining('No unfiled tasks'), findsOneWidget);
 
     await createTask(tester, 'Buy milk');
 
@@ -115,12 +144,7 @@ void main() {
       of: find.text('OnlyOne'),
       matching: find.byType(ProjectCard),
     );
-    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(gesture.removePointer);
-    await gesture.addPointer(location: Offset.zero);
-    await tester.pumpAndSettle();
-    await gesture.moveTo(tester.getCenter(cardFinder));
-    await tester.pumpAndSettle();
+    await hoverOver(tester, cardFinder);
 
     await tapProjectCardAction(tester, cardFinder, Icons.delete_outline);
     await tester.tap(find.text('Delete'));
@@ -139,16 +163,15 @@ void main() {
     await tester.tap(find.text('Errands'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.enterText(dialogTextField(), 'Buy milk');
-    await tester.tap(find.text('Create'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Buy milk'), findsOneWidget);
+    await createTaskInOverlay(tester, 'Buy milk');
+    final taskTitle = find.descendant(
+      of: overlayFinder(),
+      matching: find.text('Buy milk'),
+    );
+    expect(taskTitle, findsOneWidget);
 
     final checkboxFinder = find.ancestor(
-      of: find.text('Buy milk'),
+      of: taskTitle,
       matching: find.byType(ListTile),
     );
     final checkbox = find.descendant(
@@ -158,7 +181,7 @@ void main() {
     await tester.tap(checkbox);
     await tester.pumpAndSettle();
 
-    expect(find.text('Buy milk'), findsOneWidget);
+    expect(taskTitle, findsOneWidget);
     expect(tester.widget<Checkbox>(checkbox).value, isTrue);
   });
 
@@ -174,14 +197,19 @@ void main() {
     await tester.tap(find.text('Launch'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.enterText(dialogTextField(), 'Ship it');
-    await tester.tap(find.text('Create'));
-    await tester.pumpAndSettle();
+    await createTaskInOverlay(tester, 'Ship it');
+    final shipItInOverlay = find.descendant(
+      of: overlayFinder(),
+      matching: find.text('Ship it'),
+    );
 
-    // Expand the task to reveal the subtasks section.
-    await tester.tap(find.text('Ship it'));
+    // Expand the task to reveal the subtasks section. Tapping the
+    // ancestor ListTile (its onTap is what toggles expansion) rather than
+    // the title Text directly: the Text's own hit box is narrow and left-
+    // aligned, while the ListTile spans the tile's full width.
+    await tester.tap(
+      find.ancestor(of: shipItInOverlay, matching: find.byType(ListTile)),
+    );
     await tester.pumpAndSettle();
 
     final subtaskField = find.widgetWithText(TextField, 'Add a subtask');
@@ -200,7 +228,7 @@ void main() {
     // Scope to this test's own task tile: earlier tests' tasks are still
     // around too (see the note on setUpAll above).
     final taskTileFinder = find.ancestor(
-      of: find.text('Ship it'),
+      of: shipItInOverlay,
       matching: find.byType(TaskTile),
     );
 
@@ -310,21 +338,22 @@ void main() {
       );
       expect(actionsFinder, findsNothing);
 
-      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      addTearDown(gesture.removePointer);
-      await gesture.addPointer(location: Offset.zero);
-      await tester.pumpAndSettle();
-
-      await gesture.moveTo(tester.getCenter(cardFinder));
-      await tester.pumpAndSettle();
+      await hoverOver(tester, cardFinder);
 
       expect(actionsFinder, findsOneWidget);
 
-      // Tapping the card itself (not the delete button) opens the project.
+      // Tapping the card itself (not the actions button) opens it via the
+      // card-morph overlay.
       await tester.tap(find.text('Groceries'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No tasks in this project yet.'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: overlayFinder(),
+          matching: find.text('No tasks in this project yet.'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -335,15 +364,14 @@ void main() {
     await tester.tap(find.text('Kitchen Remodel'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
-    await tester.enterText(dialogTextField(), 'Pick tiles');
-    await tester.tap(find.text('Create'));
-    await tester.pumpAndSettle();
-    expect(find.text('Pick tiles'), findsOneWidget);
+    await createTaskInOverlay(tester, 'Pick tiles');
+    expect(
+      find.descendant(of: overlayFinder(), matching: find.text('Pick tiles')),
+      findsOneWidget,
+    );
 
     // Back to the projects list, then delete the project via hover + the
-    // card's delete button.
+    // card's actions menu.
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
 
@@ -351,12 +379,7 @@ void main() {
       of: find.text('Kitchen Remodel'),
       matching: find.byType(ProjectCard),
     );
-    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(gesture.removePointer);
-    await gesture.addPointer(location: Offset.zero);
-    await tester.pumpAndSettle();
-    await gesture.moveTo(tester.getCenter(cardFinder));
-    await tester.pumpAndSettle();
+    await hoverOver(tester, cardFinder);
 
     await tapProjectCardAction(tester, cardFinder, Icons.delete_outline);
     // Confirm the "Delete project?" dialog.
@@ -365,6 +388,30 @@ void main() {
 
     expect(find.text('Kitchen Remodel'), findsNothing);
     expect(find.text('Pick tiles'), findsNothing);
+  });
+
+  testWidgets('favoriting a project surfaces it in the sidebar', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await createProject(tester, 'Star Me');
+    final cardFinder = find.ancestor(
+      of: find.text('Star Me'),
+      matching: find.byType(ProjectCard),
+    );
+    await hoverOver(tester, cardFinder);
+
+    await tester.tap(
+      find.descendant(of: cardFinder, matching: find.byIcon(Icons.more_vert)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Favorite'));
+    await tester.pumpAndSettle();
+
+    // The sidebar's Favorites section now has a nav item for it — that's a
+    // second "Star Me" on screen (the card, plus the sidebar row).
+    expect(find.text('Star Me'), findsNWidgets(2));
   });
 
   testWidgets('a lone project card is centered, not stretched full width', (
@@ -382,9 +429,10 @@ void main() {
     final windowWidth =
         tester.view.physicalSize.width / tester.view.devicePixelRatio;
 
-    // Well short of the available width (minus the 32px of horizontal grid
-    // padding) — a full-width stretch would come within a few px of it.
-    expect(cardWidth, lessThan(windowWidth - 32 - 100));
+    // Well short of the available main-content width (window minus the
+    // sidebar and grid padding) — a full-width stretch would come within a
+    // few px of it.
+    expect(cardWidth, lessThan(windowWidth - 232 - 32 - 100));
   });
 
   testWidgets('Settings > Wipe All Data clears everything without restart', (
@@ -398,21 +446,34 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
-    // The Backup & restore section pushed this further down the list.
+    // Scoped to the Settings screen's own scroll view: the sidebar's mini
+    // calendar is a GridView, which builds a Scrollable of its own even
+    // with NeverScrollableScrollPhysics, so an unscoped find.byType(Scrollable)
+    // would match two.
     await tester.scrollUntilVisible(
       find.text('Wipe all data'),
       200,
-      scrollable: find.byType(Scrollable),
+      scrollable: find.descendant(
+        of: find.byKey(const Key('settings-scroll')),
+        matching: find.byType(Scrollable),
+      ),
     );
     await tester.tap(find.text('Wipe all data'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Wipe everything'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Back'));
+    // Scoped to the sidebar: the Settings screen's own "default landing
+    // screen" control also has a "Projects" option label on-screen here.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppSidebar),
+        matching: find.text('Projects'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('ToWipe'), findsNothing);
-    expect(find.textContaining('No tasks yet'), findsOneWidget);
+    expect(find.textContaining('No unfiled tasks'), findsOneWidget);
   });
 }

@@ -23,13 +23,18 @@ class ProjectAdapter extends TypeAdapter<Project> {
       lastOpenedAt: fields[3] as DateTime?,
       colorIndex: fields[4] == null ? 0 : fields[4] as int,
       archived: fields[5] == null ? false : fields[5] as bool,
+      favorite: fields[6] == null ? false : fields[6] as bool,
+      activityLog:
+          fields[7] == null ? [] : (fields[7] as List?)?.cast<ActivityEntry>(),
+      comments:
+          fields[8] == null ? [] : (fields[8] as List?)?.cast<ProjectComment>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Project obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -41,7 +46,13 @@ class ProjectAdapter extends TypeAdapter<Project> {
       ..writeByte(4)
       ..write(obj.colorIndex)
       ..writeByte(5)
-      ..write(obj.archived);
+      ..write(obj.archived)
+      ..writeByte(6)
+      ..write(obj.favorite)
+      ..writeByte(7)
+      ..write(obj.activityLog)
+      ..writeByte(8)
+      ..write(obj.comments);
   }
 
   @override
