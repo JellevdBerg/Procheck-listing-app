@@ -27,6 +27,7 @@ class SmartViewTaskRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.nocturne;
+    final priorityTag = NocturneTag.forPriority(task.priority);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -60,7 +61,8 @@ class SmartViewTaskRow extends ConsumerWidget {
               ],
             ),
           ),
-          ?NocturneTag.forPriority(task.priority),
+          // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
+          if (priorityTag != null) priorityTag,
           if (task.priority != TaskPriority.none) const SizedBox(width: 6),
           if (task.dueDate != null)
             NocturneTag(

@@ -154,6 +154,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
     ];
+    final priorityTag = NocturneTag.forPriority(task.priority);
 
     return Column(
       children: [
@@ -180,7 +181,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ?NocturneTag.forPriority(task.priority),
+              // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
+              if (priorityTag != null) priorityTag,
               if (task.priority != TaskPriority.none)
                 const SizedBox(width: 6),
               if (task.dueDate != null) ...[
