@@ -56,3 +56,33 @@ and likely has the same latent issue, but the spec named the project pane
 specifically, so left untouched per "don't refactor unrelated code."
 
 ---
+
+## Task 4: Rebindable keyboard shortcuts
+Status: **done**
+Files changed: `lib/models/shortcut_binding.dart` (new),
+`lib/providers/settings_provider.dart`, `lib/screens/app_shell.dart`,
+`lib/screens/settings_screen.dart`, `test/settings_provider_test.dart` (new)
+Notes: New `ShortcutBinding` model (key + `cmdOrCtrl`/`shift`/`alt`) with
+per-action overrides persisted in the settings Hive box (same
+individual-primitive-keys convention as the rest of `AppSettings`), included
+in the backup export/import round-trip. `AppShell`'s `CallbackShortcuts` now
+builds its bindings map from `settings.shortcutFor(action)` instead of
+hardcoded `SingleActivator`s. Added a 4th Settings card, "Keyboard
+shortcuts", listing both actions (there are only two global shortcuts in the
+whole app — New project, New task) with a "Change" button opening a small
+recorder dialog: hold a modifier and press a key, Escape cancels. Rebinding
+validates the new combo against every other action's current binding and
+rejects a duplicate with an error snackbar instead of saving it. A rebound
+action gets a reset-to-default button.
+Assumptions:
+- Modeled "Ctrl" and "Cmd" as one unified `cmdOrCtrl` flag rather than two
+  separately-bindable modifiers, matching how the app's shortcuts already
+  worked (both keys triggered the same action across platforms) — a
+  rebind still requires holding *some* Ctrl/Cmd/Alt modifier (rejecting a
+  bare unmodified key) so a shortcut can never quietly swallow normal
+  typing input.
+- Duplicate rejection compares the *effective* binding (override or
+  default) of every other action — there's no way to end up with two
+  actions bound to the same combo.
+
+---
