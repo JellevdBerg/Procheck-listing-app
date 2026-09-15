@@ -1,16 +1,15 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/attachment.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import 'attachments_editor.dart';
 import 'nocturne/nocturne_widgets.dart';
+import 'notes_field.dart';
 import 'wobble_checkbox.dart';
 
 /// A single task row: a checkbox + title that expands in place to reveal
@@ -297,7 +296,7 @@ class _ExpandedTaskDetail extends ConsumerWidget {
             newSubtaskController: newSubtaskController,
             onAddSubtask: onAddSubtask,
           );
-          final notes = _NotesField(
+          final notes = NotesField(
             controller: notesController,
             focusNode: notesFocusNode,
           );
@@ -306,7 +305,15 @@ class _ExpandedTaskDetail extends ConsumerWidget {
             children: [
               notes,
               const SizedBox(height: 16),
-              _AttachmentsSection(task: task),
+              AttachmentsEditor(
+                attachments: task.attachments,
+                onAdd: (picked) => ref
+                    .read(tasksProvider.notifier)
+                    .addAttachments(task.id, picked),
+                onRemoveAt: (index) => ref
+                    .read(tasksProvider.notifier)
+                    .removeAttachment(task.id, index),
+              ),
             ],
           );
 
@@ -446,133 +453,6 @@ class _PriorityRow extends ConsumerWidget {
       labelBuilder: (p) => p.label,
       onChanged: (p) =>
           ref.read(tasksProvider.notifier).setTaskPriority(task.id, p),
-    );
-  }
-}
-
-class _AttachmentsSection extends ConsumerWidget {
-  const _AttachmentsSection({required this.task});
-
-  final Task task;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'ATTACHMENTS',
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 0.04,
-            color: theme.hintColor,
-          ),
-        ),
-        const SizedBox(height: 6),
-        for (var i = 0; i < task.attachments.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: _AttachmentChip(
-              attachment: task.attachments[i],
-              onRemove: () => ref
-                  .read(tasksProvider.notifier)
-                  .removeAttachment(task.id, i),
-            ),
-          ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: NocturneButton(
-            label: 'Add attachment',
-            icon: Icons.attach_file,
-            dense: true,
-            onPressed: () => _pickAttachments(ref),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _pickAttachments(WidgetRef ref) async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: kIsWeb,
-    );
-    if (result == null || result.files.isEmpty) return;
-
-    final attachments = result.files
-        .map(
-          (f) => Attachment(
-            name: f.name,
-            size: f.size,
-            path: kIsWeb ? null : f.path,
-          ),
-        )
-        .toList();
-    ref.read(tasksProvider.notifier).addAttachments(task.id, attachments);
-  }
-}
-
-class _AttachmentChip extends StatelessWidget {
-  const _AttachmentChip({required this.attachment, required this.onRemove});
-
-  final Attachment attachment;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.insert_drive_file_outlined, size: 15, color: theme.hintColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              attachment.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            attachment.sizeLabel,
-            style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
-          ),
-          const SizedBox(width: 8),
-          InkWell(
-            onTap: onRemove,
-            child: Icon(Icons.close, size: 13, color: theme.hintColor),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotesField extends StatelessWidget {
-  const _NotesField({required this.controller, required this.focusNode});
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      decoration: const InputDecoration(
-        labelText: 'Notes',
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
-      minLines: 3,
-      maxLines: 6,
     );
   }
 }

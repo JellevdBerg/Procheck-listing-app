@@ -92,12 +92,20 @@ class TasksNotifier extends StateNotifier<List<Task>> {
               Subtask(id: const Uuid().v4(), title: templateSubtask.title),
         )
         .toList();
+    // Fresh Attachment copies rather than the template's own instances —
+    // each HiveObject should belong to one parent's list, not be shared
+    // between the template and every task instantiated from it.
+    final attachments = template.attachments
+        .map((a) => Attachment(name: a.name, size: a.size, path: a.path))
+        .toList();
     return _addTask(
       title: title ?? template.name,
       projectId: projectId,
       subtasks: subtasks,
       templateId: template.id,
       priority: priority,
+      notes: template.notes,
+      attachments: attachments,
     );
   }
 
@@ -107,6 +115,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     required List<Subtask> subtasks,
     String? templateId,
     TaskPriority priority = TaskPriority.none,
+    String? notes,
+    List<Attachment>? attachments,
   }) {
     final task = Task(
       id: const Uuid().v4(),
@@ -116,6 +126,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       projectId: projectId,
       templateId: templateId,
       priorityIndex: priority.index,
+      notes: notes,
+      attachments: attachments,
     );
     unawaited(_box.put(task.id, task));
     state = [task, ...state];
