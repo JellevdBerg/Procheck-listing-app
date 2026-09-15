@@ -4,8 +4,9 @@ ProCheck is a lightweight cross-platform task app built with Flutter. Organize t
 
 ## Features
 
-- **Projects** — group related tasks together (e.g. "Onboarding", "Weekly routine"), each with its own accent color and a search field to find one quickly. Projects sort by most-recently-opened and lay out as a centered, responsive grid: a single project sits centered rather than stretching edge-to-edge, and more projects fill in left-to-right before wrapping to a new row; extra projects beyond that show as compact chips below. Deleting a project deletes its tasks (and their subtasks) with it. Hover a project (or a task) to reveal a delete button.
+- **Projects** — group related tasks together (e.g. "Onboarding", "Weekly routine"), each with its own accent color and a search field to find one quickly. Projects sort by most-recently-opened and lay out as a centered, responsive grid: a single project sits centered rather than stretching edge-to-edge, and more projects fill in left-to-right before wrapping to a new row; extra projects beyond that show as compact chips below. Deleting a project (or a standalone task) plays a playful shrink-and-pop-out animation, with the remaining items smoothly resettling into place afterward. Hover a project (or a task) to reveal a delete button.
 - **Tasks & subtasks** — a task can carry notes and a list of subtasks. Checking either off plays a quick "wobble" animation, and checking off every subtask automatically checks the task (toggling the task cascades back down to all its subtasks). Tap a task to expand it in place — subtasks appear below it, notes in a panel beside them. A task with no project is a quick one-off: checking it off removes it instead of leaving it around.
+- **Opening a project** shows it in a left-side vertical hero (folder icon on top, the project name running vertically beneath it) instead of a horizontal title bar, and the rest of the app sinks away behind it while the project's tasks slide in from the right. Everything in that view — checkboxes, the add-task button — picks up the project's own accent color, so it's obvious at a glance which project you're in; this is purely a per-screen accent and never touches the app's global theme or the project's stored color.
 - **Templates** — define a main task and its subtasks once as a template, then spin up new tasks from it whenever you need that same structure again.
 - **Settings** — theme (system/light/dark), a curated accent color palette, a "reduce motion" toggle for the app's animations, and a "Wipe all data" option that resets the app to a clean first-run state.
 - A brief splash screen greets you with the logo on launch; the "add project/task" flow opens as a centered, blurred-backdrop dialog rather than a bottom sheet.
@@ -36,13 +37,16 @@ lib/
   data/        Hive setup/initialization
   providers/   Riverpod state notifiers (persist to Hive in the background)
   screens/     Splash, home, project detail, task template editor, settings
-  widgets/     Shared UI pieces (app logo, project card, task tile, create-task sheet, page transitions)
+  widgets/     Shared UI pieces (app logo, project card, task tile, create-task sheet,
+               page transitions, pop-out removal animation, wobble checkbox)
 ```
 
 State management uses [Riverpod](https://riverpod.dev/); local persistence uses [Hive](https://pub.dev/packages/hive). Notifier methods update in-memory state synchronously and persist to disk in the background, so the UI never blocks on I/O.
 
-Opening a project slides its task list in from the right while the home screen fades away behind it; the tapped project card morphs into the project's header bar via a `Hero` animation. Tasks then expand in place within that list — no further navigation — pushing the tasks below them down to make room for the subtasks/notes view.
+Opening a project slides its task list in from the right while the home screen sinks away and fades out behind it; the tapped project card morphs into the project's left-side vertical hero via a `Hero` animation. Tasks then expand in place within that list — no further navigation — pushing the tasks below them down to make room for the subtasks/notes view.
+
+Two reusable animation widgets back most of the app's motion: `WobbleCheckbox` (a quick squash-and-tilt bounce on toggle, shared by task and subtask checkboxes) and `PopOutRemoval` (a shrink-and-pop-out effect for deleted projects and tasks, whose layout footprint shrinks in real time so siblings resettle smoothly instead of jumping). Both respect the "reduce motion" setting.
 
 ## Windows builds
 
-Every push builds a Windows release via GitHub Actions (`.github/workflows/windows-build.yml`) and publishes it as a versioned GitHub Release (e.g. `ProCheck v1.0.5`, tagged `v1.0.5-build.<run-number>` for uniqueness). Grab the latest `.zip` from the repo's [Releases page](../../releases), unzip it, and run `procheck.exe` — no installer needed.
+Every push builds a Windows release via GitHub Actions (`.github/workflows/windows-build.yml`) and publishes it as a versioned GitHub Release (e.g. `ProCheck v1.0.6`, tagged `v1.0.6-build.<run-number>` for uniqueness). Grab the latest `.zip` from the repo's [Releases page](../../releases), unzip it, and run `procheck.exe` — no installer needed.

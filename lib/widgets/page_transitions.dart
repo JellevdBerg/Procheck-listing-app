@@ -30,9 +30,10 @@ Future<T?> pushSlideIn<T>(
   );
 }
 
-/// Wrap a screen's root widget with this so it fades and shrinks away
-/// while a screen pushed on top of it (via [pushSlideIn]) slides in, and
-/// reverses that when the screen on top is popped.
+/// Wrap a screen's root widget with this so it fades and sinks downward,
+/// out of view, while a screen pushed on top of it (via [pushSlideIn])
+/// slides in from the right — and reverses that when the screen on top is
+/// popped, so returning to this screen feels like it rises back into place.
 class DropAwayOnPush extends StatelessWidget {
   const DropAwayOnPush({super.key, required this.child});
 
@@ -43,14 +44,19 @@ class DropAwayOnPush extends StatelessWidget {
     final secondaryAnimation = ModalRoute.of(context)?.secondaryAnimation;
     if (secondaryAnimation == null) return child;
 
+    final curved = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: Curves.easeInCubic,
+      reverseCurve: Curves.easeOutCubic,
+    );
     return AnimatedBuilder(
-      animation: secondaryAnimation,
+      animation: curved,
       child: child,
       builder: (context, child) {
-        final t = secondaryAnimation.value;
+        final t = curved.value;
         return Opacity(
           opacity: 1 - t,
-          child: Transform.scale(scale: 1 - (t * 0.08), child: child),
+          child: Transform.translate(offset: Offset(0, t * 72), child: child),
         );
       },
     );

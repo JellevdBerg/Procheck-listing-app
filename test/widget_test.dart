@@ -79,6 +79,42 @@ void main() {
     expect(find.text('Buy milk'), findsOneWidget);
   });
 
+  testWidgets('deleting the only project returns to the empty grid', (
+    tester,
+  ) async {
+    // Runs before any other test creates a project, so this really is the
+    // only one — exercising the pop-out animation's edge case of a Wrap
+    // section going from one item straight to zero.
+    await pumpApp(tester);
+
+    await createProject(tester, 'OnlyOne');
+    expect(find.text('OnlyOne'), findsOneWidget);
+
+    final cardFinder = find.ancestor(
+      of: find.text('OnlyOne'),
+      matching: find.byType(ProjectCard),
+    );
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(gesture.removePointer);
+    await gesture.addPointer(location: Offset.zero);
+    await tester.pumpAndSettle();
+    await gesture.moveTo(tester.getCenter(cardFinder));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: cardFinder,
+        matching: find.byIcon(Icons.delete_outline),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('OnlyOne'), findsNothing);
+    expect(find.byType(ProjectCard), findsNothing);
+  });
+
   testWidgets('a project task can be checked off and stays checked', (
     tester,
   ) async {

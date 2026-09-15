@@ -10,9 +10,13 @@ import 'wobble_checkbox.dart';
 /// its subtasks below and a notes panel beside them. Checking every
 /// subtask automatically checks the task, and vice versa.
 class TaskTile extends ConsumerStatefulWidget {
-  const TaskTile({super.key, required this.task});
+  const TaskTile({super.key, required this.task, required this.onDelete});
 
   final Task task;
+
+  /// Called when the delete button is pressed. The caller is responsible
+  /// for actually removing the task (typically after a removal animation).
+  final VoidCallback onDelete;
 
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
@@ -109,7 +113,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
-                onPressed: () => notifier.deleteTask(task.id),
+                onPressed: widget.onDelete,
               ),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
             ],

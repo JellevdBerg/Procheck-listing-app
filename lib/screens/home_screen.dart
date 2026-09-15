@@ -10,6 +10,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/blurred_dialog.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/page_transitions.dart';
+import '../widgets/pop_out_removal.dart';
 import '../widgets/project_card.dart';
 import '../widgets/task_tile.dart';
 import '../widgets/text_prompt_dialog.dart';
@@ -246,19 +247,24 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                   runSpacing: _gridSpacing,
                   children: [
                     for (final project in featuredProjects)
-                      SizedBox(
-                        width: cardWidth,
-                        height: _featuredCardHeight,
-                        child: ProjectCard(
-                          project: project,
-                          featured: true,
-                          tasks: tasks
-                              .where((t) => t.projectId == project.id)
-                              .toList(),
-                          onTap: () => openProject(project.id),
-                          onDelete: () => ref
-                              .read(projectsProvider.notifier)
-                              .deleteProject(project.id),
+                      PopOutRemoval(
+                        key: ValueKey(project.id),
+                        reduceMotion: reduceMotion,
+                        onRemoved: () => ref
+                            .read(projectsProvider.notifier)
+                            .deleteProject(project.id),
+                        builder: (context, triggerRemoval) => SizedBox(
+                          width: cardWidth,
+                          height: _featuredCardHeight,
+                          child: ProjectCard(
+                            project: project,
+                            featured: true,
+                            tasks: tasks
+                                .where((t) => t.projectId == project.id)
+                                .toList(),
+                            onTap: () => openProject(project.id),
+                            onDelete: triggerRemoval,
+                          ),
                         ),
                       ),
                   ],
@@ -287,15 +293,20 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                   runSpacing: 10,
                   children: [
                     for (final project in otherProjects)
-                      ProjectCard(
-                        project: project,
-                        tasks: tasks
-                            .where((t) => t.projectId == project.id)
-                            .toList(),
-                        onTap: () => openProject(project.id),
-                        onDelete: () => ref
+                      PopOutRemoval(
+                        key: ValueKey(project.id),
+                        reduceMotion: reduceMotion,
+                        onRemoved: () => ref
                             .read(projectsProvider.notifier)
                             .deleteProject(project.id),
+                        builder: (context, triggerRemoval) => ProjectCard(
+                          project: project,
+                          tasks: tasks
+                              .where((t) => t.projectId == project.id)
+                              .toList(),
+                          onTap: () => openProject(project.id),
+                          onDelete: triggerRemoval,
+                        ),
                       ),
                   ],
                 ),
@@ -304,7 +315,15 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
             if (unfiledTasks.isNotEmpty) ...[
               const _SectionHeader('Tasks'),
               for (final task in unfiledTasks)
-                TaskTile(key: ValueKey(task.id), task: task),
+                PopOutRemoval(
+                  key: ValueKey(task.id),
+                  reduceMotion: reduceMotion,
+                  shrinkWidth: false,
+                  onRemoved: () =>
+                      ref.read(tasksProvider.notifier).deleteTask(task.id),
+                  builder: (context, triggerRemoval) =>
+                      TaskTile(task: task, onDelete: triggerRemoval),
+                ),
             ],
             const SizedBox(height: 80),
           ],
