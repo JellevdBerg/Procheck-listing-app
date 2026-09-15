@@ -150,3 +150,28 @@ Assumptions:
   else to disambiguate a right-click against.
 
 ---
+
+## Task 7: Fix add-project/add-task button anchoring on window resize
+Status: **done**
+Files changed: `lib/screens/projects_screen.dart`, `test/widget_test.dart`
+Notes: Confirmed the bug empirically first (measured the "New project" and
+"New task" buttons' distance from the window's right edge at 1000px and
+1800px window widths via a throwaway widget test before touching any code):
+"New task"'s gap stayed constant (26.8 at both widths); "New project"'s grew
+from 28.8 to 289.6. Root cause: the toolbar `Row` wrapped the search field in
+a `Flexible` (flex:1 by default) *and* had a separate `Spacer` (also
+flex:1) — Flutter's Flex layout splits leftover space between same-priority
+flexible children, so the Spacer only got half the free width, and the
+search field (capped at 360px by its own `ConstrainedBox`) never used the
+half handed to it, leaving a growing dead gap and the button drifting
+inward as the window widened. `TemplatesScreen`'s "New template" button
+already used the correct one-`Expanded` pattern (checked it too — no bug
+there). Fixed by replacing the `Flexible` + `Spacer` pair with a single
+`Expanded` (containing an `Align` + the same capped-width `ConstrainedBox`),
+matching exactly how the working "New task" row anchors its own trailing
+button. Added a regression test asserting the gap is unchanged across a
+1000px→1800px resize.
+Assumptions: none — root cause was fully identified and the fix directly
+addresses it (not a workaround).
+
+---
