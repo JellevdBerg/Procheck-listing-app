@@ -10,6 +10,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/blurred_dialog.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/page_transitions.dart';
+import '../widgets/pop_out_removal.dart';
 import '../widgets/project_card.dart';
 import '../widgets/task_tile.dart';
 import '../widgets/text_prompt_dialog.dart';
@@ -46,7 +47,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return DropAwayOnPush(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('ProCheck'),
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppLogo(size: 32),
+              SizedBox(width: 12),
+              Text('ProCheck'),
+            ],
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings_outlined),
@@ -54,10 +62,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(right: 16, left: 4),
-              child: AppLogo(size: 32),
             ),
           ],
           bottom: TabBar(
@@ -148,6 +152,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
   static const _featuredCardHeight = 280.0;
   static const _featuredCardMinWidth = 240.0;
   static const _gridPadding = 16.0;
+  static const _gridSpacing = 16.0;
 
   final _searchController = TextEditingController();
   String _query = '';
@@ -190,17 +195,19 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 
     return LayoutBuilder(
       builder: (context, outerConstraints) {
-        // How many featured cards fit in one row is what "on full display"
-        // means here: it grows with the window instead of a fixed count.
+        // How many featured cards fit in one row — based purely on the
+        // window width, not on how many projects actually exist, so a
+        // single project gets a naturally-sized card instead of stretching
+        // to fill the whole row.
         final availableWidth = outerConstraints.maxWidth - _gridPadding * 2;
-        final crossAxisCount = projects.isEmpty
-            ? 1
-            : (availableWidth / _featuredCardMinWidth).floor().clamp(
-                1,
-                projects.length,
-              );
-        final featuredProjects = projects.take(crossAxisCount).toList();
-        final otherProjects = projects.skip(crossAxisCount).toList();
+        final columnCapacity = (availableWidth / _featuredCardMinWidth)
+            .floor()
+            .clamp(1, 1 << 30);
+        final cardWidth =
+            (availableWidth - _gridSpacing * (columnCapacity - 1)) /
+            columnCapacity;
+        final featuredProjects = projects.take(columnCapacity).toList();
+        final otherProjects = projects.skip(columnCapacity).toList();
 
         return ListView(
           children: [
@@ -234,30 +241,33 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
               const _SectionHeader('Projects'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    mainAxisExtent: _featuredCardHeight,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: featuredProjects.length,
-                  itemBuilder: (context, index) {
-                    final project = featuredProjects[index];
-                    return ProjectCard(
-                      project: project,
-                      featured: true,
-                      tasks: tasks
-                          .where((t) => t.projectId == project.id)
-                          .toList(),
-                      onTap: () => openProject(project.id),
-                      onDelete: () => ref
-                          .read(projectsProvider.notifier)
-                          .deleteProject(project.id),
-                    );
-                  },
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: _gridSpacing,
+                  runSpacing: _gridSpacing,
+                  children: [
+                    for (final project in featuredProjects)
+                      PopOutRemoval(
+                        key: ValueKey(project.id),
+                        reduceMotion: reduceMotion,
+                        onRemoved: () => ref
+                            .read(projectsProvider.notifier)
+                            .deleteProject(project.id),
+                        builder: (context, triggerRemoval) => SizedBox(
+                          width: cardWidth,
+                          height: _featuredCardHeight,
+                          child: ProjectCard(
+                            project: project,
+                            featured: true,
+                            tasks: tasks
+                                .where((t) => t.projectId == project.id)
+                                .toList(),
+                            onTap: () => openProject(project.id),
+                            onDelete: triggerRemoval,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ] else if (query.isNotEmpty) ...[
@@ -278,19 +288,25 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
                 child: Wrap(
+                  alignment: WrapAlignment.center,
                   spacing: 10,
                   runSpacing: 10,
                   children: [
                     for (final project in otherProjects)
-                      ProjectCard(
-                        project: project,
-                        tasks: tasks
-                            .where((t) => t.projectId == project.id)
-                            .toList(),
-                        onTap: () => openProject(project.id),
-                        onDelete: () => ref
+                      PopOutRemoval(
+                        key: ValueKey(project.id),
+                        reduceMotion: reduceMotion,
+                        onRemoved: () => ref
                             .read(projectsProvider.notifier)
                             .deleteProject(project.id),
+                        builder: (context, triggerRemoval) => ProjectCard(
+                          project: project,
+                          tasks: tasks
+                              .where((t) => t.projectId == project.id)
+                              .toList(),
+                          onTap: () => openProject(project.id),
+                          onDelete: triggerRemoval,
+                        ),
                       ),
                   ],
                 ),
@@ -299,7 +315,15 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
             if (unfiledTasks.isNotEmpty) ...[
               const _SectionHeader('Tasks'),
               for (final task in unfiledTasks)
-                TaskTile(key: ValueKey(task.id), task: task),
+                PopOutRemoval(
+                  key: ValueKey(task.id),
+                  reduceMotion: reduceMotion,
+                  shrinkWidth: false,
+                  onRemoved: () =>
+                      ref.read(tasksProvider.notifier).deleteTask(task.id),
+                  builder: (context, triggerRemoval) =>
+                      TaskTile(task: task, onDelete: triggerRemoval),
+                ),
             ],
             const SizedBox(height: 80),
           ],

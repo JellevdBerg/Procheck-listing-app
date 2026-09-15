@@ -62,4 +62,10 @@ class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
     unawaited(_box.delete(id));
     state = state.where((t) => t.id != id).toList();
   }
+
+  /// Wipes every template. Used by Settings > Wipe All Data.
+  void clearAll() {
+    unawaited(_box.clear());
+    state = [];
+  }
 }

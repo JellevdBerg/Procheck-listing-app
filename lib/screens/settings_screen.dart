@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/task_templates_provider.dart';
+import '../providers/tasks_provider.dart';
+import '../widgets/text_prompt_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -63,9 +67,49 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.reduceMotion,
             onChanged: notifier.setReduceMotion,
           ),
+          const Divider(),
+          const _SectionLabel('Danger zone'),
+          ListTile(
+            leading: Icon(
+              Icons.delete_forever_outlined,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            title: Text(
+              'Wipe all data',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            subtitle: const Text(
+              'Permanently deletes every project, task, and template',
+            ),
+            onTap: () => _confirmWipe(context, ref),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmWipe(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Wipe all data?',
+      message:
+          'This permanently deletes every project, task, subtask, and '
+          'template, and resets settings to their defaults. This cannot '
+          'be undone.',
+      confirmLabel: 'Wipe everything',
+    );
+    if (!confirmed) return;
+
+    ref.read(projectsProvider.notifier).clearAll();
+    ref.read(tasksProvider.notifier).clearAll();
+    ref.read(taskTemplatesProvider.notifier).clearAll();
+    ref.read(settingsProvider.notifier).resetToDefaults();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All ProCheck data has been wiped.')),
+      );
+    }
   }
 }
 

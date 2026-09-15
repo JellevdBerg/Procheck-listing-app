@@ -10,9 +10,13 @@ import 'wobble_checkbox.dart';
 /// its subtasks below and a notes panel beside them. Checking every
 /// subtask automatically checks the task, and vice versa.
 class TaskTile extends ConsumerStatefulWidget {
-  const TaskTile({super.key, required this.task});
+  const TaskTile({super.key, required this.task, required this.onDelete});
 
   final Task task;
+
+  /// Called when the delete button is pressed. The caller is responsible
+  /// for actually removing the task (typically after a removal animation).
+  final VoidCallback onDelete;
 
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
@@ -109,7 +113,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
-                onPressed: () => notifier.deleteTask(task.id),
+                onPressed: widget.onDelete,
               ),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
             ],
@@ -235,6 +239,7 @@ class _SubtasksSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(tasksProvider.notifier);
+    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final theme = Theme.of(context);
 
     return Column(
@@ -243,19 +248,22 @@ class _SubtasksSection extends ConsumerWidget {
         if (task.subtasks.isNotEmpty) ...[
           Text('Subtasks', style: theme.textTheme.labelLarge),
           for (final subtask in task.subtasks)
-            CheckboxListTile(
+            ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: subtask.isChecked,
+              onTap: () => notifier.toggleSubtask(task.id, subtask.id),
+              leading: WobbleCheckbox(
+                value: subtask.isChecked,
+                reduceMotion: reduceMotion,
+                onChanged: (_) => notifier.toggleSubtask(task.id, subtask.id),
+              ),
               title: Text(
                 subtask.title,
                 style: subtask.isChecked
                     ? const TextStyle(decoration: TextDecoration.lineThrough)
                     : null,
               ),
-              onChanged: (_) => notifier.toggleSubtask(task.id, subtask.id),
-              secondary: IconButton(
+              trailing: IconButton(
                 icon: const Icon(Icons.close, size: 18),
                 tooltip: 'Remove subtask',
                 onPressed: () => notifier.removeSubtask(task.id, subtask.id),

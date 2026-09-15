@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// The ProCheck logo: a checklist mark on a rounded, gradient-filled tile.
+/// The ProCheck logo mark, rendered from the app's icon asset.
 ///
 /// Used both in the [HomeScreen] app bar (small) and on the splash screen
 /// (large) — just at different sizes.
@@ -11,23 +11,10 @@ class AppLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
+    return Image.asset(
+      'assets/icon/procheck_logo.png',
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [scheme.primary, scheme.primary.withValues(alpha: 0.65)],
-        ),
-      ),
-      child: Icon(
-        Icons.checklist_rtl_rounded,
-        color: scheme.onPrimary,
-        size: size * 0.62,
-      ),
     );
   }
 }
