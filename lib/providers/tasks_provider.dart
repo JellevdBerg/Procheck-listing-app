@@ -26,7 +26,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
 
   void _sortState() {
     final sorted = [...state]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) {
+        final order = b.sortOrder.compareTo(a.sortOrder);
+        if (order != 0) return order;
+        return b.createdAt.compareTo(a.createdAt);
+      });
     state = sorted;
   }
 
@@ -105,6 +109,41 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
     unawaited(_box.delete(taskId));
     state = state.where((t) => t.id != taskId).toList();
+  }
+
+  /// Re-adds a previously-deleted [task] exactly as it was — used to undo an
+  /// accidental deletion. Reschedules its due-date notification if it had
+  /// one and isn't checked off.
+  void restoreTask(Task task) {
+    unawaited(_box.put(task.id, task));
+    state = [task, ...state];
+    _sortState();
+    if (task.dueDate != null && !task.isChecked) {
+      unawaited(NotificationService.instance.scheduleForTask(task));
+    }
+  }
+
+  /// Reassigns [orderedIds]' sortOrder to reflect the drag-and-drop order
+  /// the caller wants for them — a project's task list, or the home
+  /// screen's unfiled tasks, each reordered independently of the other.
+  /// Every id in the list gets a fresh, small, strictly-decreasing
+  /// sortOrder (simpler and more robust than fractional midpoint
+  /// insertion), which — being far smaller than any timestamp-based
+  /// sortOrder — always sorts below a task nobody has manually touched yet,
+  /// without disturbing that task's position relative to others like it.
+  void reorderTasks(List<String> orderedIds) {
+    final n = orderedIds.length;
+    var changed = false;
+    for (var i = 0; i < n; i++) {
+      final task = _box.get(orderedIds[i]);
+      if (task == null) continue;
+      task.sortOrder = (n - i).toDouble();
+      unawaited(task.save());
+      changed = true;
+    }
+    if (!changed) return;
+    state = [...state];
+    _sortState();
   }
 
   /// Toggling a task cascades the new value down to every subtask. To

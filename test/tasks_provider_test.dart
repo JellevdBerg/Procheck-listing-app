@@ -53,4 +53,38 @@ void main() {
     expect(() => notifier.toggleTask(task.id), returnsNormally); // undo
     expect(() => notifier.deleteTask(task.id), returnsNormally);
   });
+
+  test('reorderTasks reflects the given order the next time it is read', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final a = notifier.addBlankTask(title: 'A');
+    final b = notifier.addBlankTask(title: 'B');
+    final c = notifier.addBlankTask(title: 'C');
+
+    // Drag A to the front, regardless of whatever order they started in.
+    notifier.reorderTasks([a.id, c.id, b.id]);
+
+    final reordered = container
+        .read(tasksProvider)
+        .where((t) => [a.id, b.id, c.id].contains(t.id))
+        .map((t) => t.id)
+        .toList();
+    expect(reordered, [a.id, c.id, b.id]);
+  });
+
+  test('restoreTask brings a deleted standalone task back', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'Water the plants');
+
+    notifier.deleteTask(task.id);
+    expect(container.read(tasksProvider).any((t) => t.id == task.id), isFalse);
+
+    notifier.restoreTask(task);
+    expect(container.read(tasksProvider).any((t) => t.id == task.id), isTrue);
+  });
 }

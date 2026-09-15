@@ -97,6 +97,33 @@ class ProjectDetailScreen extends ConsumerWidget {
               },
             ),
             IconButton(
+              icon: Icon(
+                project.archived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
+              ),
+              tooltip: project.archived
+                  ? 'Unarchive project'
+                  : 'Archive project',
+              onPressed: () {
+                final notifier = ref.read(projectsProvider.notifier);
+                if (project.archived) {
+                  notifier.unarchiveProject(projectId);
+                } else {
+                  notifier.archiveProject(projectId);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('"${project.name}" archived'),
+                      action: SnackBarAction(
+                        label: 'Undo',
+                        onPressed: () => notifier.unarchiveProject(projectId),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete project',
               onPressed: () async {
@@ -130,8 +157,17 @@ class ProjectDetailScreen extends ConsumerWidget {
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     )
-                  : ListView.builder(
+                  : ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
                       itemCount: tasks.length,
+                      onReorderItem: (oldIndex, newIndex) {
+                        final reordered = [...tasks];
+                        final moved = reordered.removeAt(oldIndex);
+                        reordered.insert(newIndex, moved);
+                        ref
+                            .read(tasksProvider.notifier)
+                            .reorderTasks(reordered.map((t) => t.id).toList());
+                      },
                       itemBuilder: (context, index) {
                         final task = tasks[index];
                         return PopOutRemoval(
@@ -141,8 +177,11 @@ class ProjectDetailScreen extends ConsumerWidget {
                           onRemoved: () => ref
                               .read(tasksProvider.notifier)
                               .deleteTask(task.id),
-                          builder: (context, triggerRemoval) =>
-                              TaskTile(task: task, onDelete: triggerRemoval),
+                          builder: (context, triggerRemoval) => TaskTile(
+                            task: task,
+                            onDelete: triggerRemoval,
+                            reorderIndex: index,
+                          ),
                         );
                       },
                     ),
