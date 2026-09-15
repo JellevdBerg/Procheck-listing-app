@@ -332,15 +332,23 @@ void main() {
       );
       expect(cardFinder, findsOneWidget);
 
+      // The actions button stays mounted at all times (reserving its layout
+      // space so hover never reflows the card) — only its Visibility flips.
       final actionsFinder = find.descendant(
         of: cardFinder,
         matching: find.byIcon(Icons.more_vert),
       );
-      expect(actionsFinder, findsNothing);
+      expect(actionsFinder, findsOneWidget);
+      Visibility actionsVisibility() => tester.widget<Visibility>(
+        find
+            .ancestor(of: actionsFinder, matching: find.byType(Visibility))
+            .first,
+      );
+      expect(actionsVisibility().visible, isFalse);
 
       await hoverOver(tester, cardFinder);
 
-      expect(actionsFinder, findsOneWidget);
+      expect(actionsVisibility().visible, isTrue);
 
       // Tapping the card itself (not the actions button) opens it via the
       // card-morph overlay.

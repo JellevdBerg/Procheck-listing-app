@@ -150,7 +150,7 @@ class _ProjectCardState extends State<ProjectCard> {
             ),
           ),
         ),
-        if (showActions || _menuOpen) _actionsMenu(context),
+        _actionsMenu(context, visible: showActions || _menuOpen),
       ],
     );
   }
@@ -158,11 +158,23 @@ class _ProjectCardState extends State<ProjectCard> {
   /// A single "more" button that rolls down a small menu on tap, rather than
   /// separate always-visible icons per action — keeps the hover state tidy
   /// as more actions get added.
-  Widget _actionsMenu(BuildContext context) {
-    return IconButton(
-      icon: Icon(Icons.more_vert, size: 20),
-      tooltip: 'Project actions',
-      onPressed: () => _openActionsMenu(context),
+  ///
+  /// Always laid out (just invisible when [visible] is false) via
+  /// [Visibility.maintainSize], so the header's height/width stays constant
+  /// across hover — an IconButton's default 48x48 tap target is taller than
+  /// the icon/text beside it, and popping it in and out of the tree on
+  /// hover was pushing everything below the header down by that difference.
+  Widget _actionsMenu(BuildContext context, {required bool visible}) {
+    return Visibility(
+      visible: visible,
+      maintainSize: true,
+      maintainAnimation: true,
+      maintainState: true,
+      child: IconButton(
+        icon: Icon(Icons.more_vert, size: 20),
+        tooltip: 'Project actions',
+        onPressed: () => _openActionsMenu(context),
+      ),
     );
   }
 
@@ -326,11 +338,8 @@ class _ProjectCardState extends State<ProjectCard> {
                   ),
                 ],
               ),
-              if (_hovering || _menuOpen) ...[
-                const SizedBox(width: 2),
-                _actionsMenu(context),
-              ] else
-                const SizedBox(width: 8),
+              const SizedBox(width: 2),
+              _actionsMenu(context, visible: _hovering || _menuOpen),
             ],
           ),
         ),
