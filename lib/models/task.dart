@@ -82,6 +82,7 @@ class Task extends HiveObject {
     'createdAt': createdAt.toIso8601String(),
     'templateId': templateId,
     'dueDate': dueDate?.toIso8601String(),
+    'sortOrder': sortOrder,
   };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -98,5 +99,6 @@ class Task extends HiveObject {
     dueDate: json['dueDate'] == null
         ? null
         : DateTime.parse(json['dueDate'] as String),
+    sortOrder: (json['sortOrder'] as num?)?.toDouble(),
   );
 }

@@ -16,6 +16,7 @@ class TaskTile extends ConsumerStatefulWidget {
     super.key,
     required this.task,
     required this.onDelete,
+    this.onExplicitDelete,
     this.autoRemoveWhenChecked = false,
     this.reorderIndex,
   });
@@ -27,6 +28,12 @@ class TaskTile extends ConsumerStatefulWidget {
   /// caller is responsible for actually removing the task — typically
   /// after a removal animation.
   final VoidCallback onDelete;
+
+  /// Fired only when the user presses the trash icon directly — never for
+  /// an [autoRemoveWhenChecked] removal. Lets a caller offer an "undo"
+  /// affordance for a deliberate delete without also popping it up every
+  /// time a quick task gets checked off and auto-removes itself.
+  final VoidCallback? onExplicitDelete;
 
   /// Standalone (no-project) tasks are meant to be quick one-offs: once
   /// checked off, they remove themselves — but only after the check-off
@@ -171,7 +178,10 @@ class _TaskTileState extends ConsumerState<TaskTile> {
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
-                onPressed: widget.onDelete,
+                onPressed: () {
+                  widget.onExplicitDelete?.call();
+                  widget.onDelete();
+                },
               ),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
               if (widget.reorderIndex != null)
