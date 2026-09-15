@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/project.dart';
+import '../models/shortcut_binding.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../theme/nocturne_theme.dart';
@@ -182,20 +182,22 @@ class _AppShellState extends ConsumerState<AppShell>
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
+    final settings = ref.watch(settingsProvider);
+
+    final bindings = <ShortcutActivator, VoidCallback>{};
+    for (final activator
+        in settings.shortcutFor(ShortcutAction.newProject).toActivators()) {
+      bindings[activator] = _newProjectShortcut;
+    }
+    for (final activator
+        in settings.shortcutFor(ShortcutAction.newTask).toActivators()) {
+      bindings[activator] = _newTaskShortcut;
+    }
 
     return Focus(
       autofocus: true,
       child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyP, control: true):
-              _newProjectShortcut,
-          const SingleActivator(LogicalKeyboardKey.keyP, meta: true):
-              _newProjectShortcut,
-          const SingleActivator(LogicalKeyboardKey.keyT, control: true):
-              _newTaskShortcut,
-          const SingleActivator(LogicalKeyboardKey.keyT, meta: true):
-              _newTaskShortcut,
-        },
+        bindings: bindings,
         child: Scaffold(
           backgroundColor: tokens.bg,
           body: Row(

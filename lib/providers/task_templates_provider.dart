@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
+import '../models/attachment.dart';
 import '../models/task_template.dart';
 import '../models/template_subtask.dart';
 
@@ -30,7 +31,12 @@ class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
     state = sorted;
   }
 
-  TaskTemplate addTemplate(String name, List<String> subtaskTitles) {
+  TaskTemplate addTemplate(
+    String name,
+    List<String> subtaskTitles, {
+    String? notes,
+    List<Attachment>? attachments,
+  }) {
     final template = TaskTemplate(
       id: const Uuid().v4(),
       name: name,
@@ -38,6 +44,8 @@ class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
           .map((title) => TemplateSubtask(id: const Uuid().v4(), title: title))
           .toList(),
       createdAt: DateTime.now(),
+      notes: notes,
+      attachments: attachments,
     );
     unawaited(_box.put(template.id, template));
     state = [...state, template];
@@ -45,11 +53,19 @@ class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
     return template;
   }
 
-  void updateTemplate(String id, String name, List<TemplateSubtask> subtasks) {
+  void updateTemplate(
+    String id,
+    String name,
+    List<TemplateSubtask> subtasks, {
+    String? notes,
+    List<Attachment>? attachments,
+  }) {
     final template = _box.get(id);
     if (template == null) return;
     template.name = name;
     template.subtasks = subtasks;
+    template.notes = notes;
+    template.attachments = attachments ?? [];
     unawaited(template.save());
     state = [
       for (final t in state)

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
 import '../data/hive_setup.dart';
+import '../models/shortcut_binding.dart';
 import '../models/task_priority.dart';
 import '../theme/nocturne_theme.dart';
 
@@ -66,6 +68,8 @@ class AppSettings {
     this.sidebarExpanded = true,
     this.workspaceIndex = 0,
     this.lastViewedScreenIndex = 0,
+    this.shortcutOverrides = const {},
+    this.workspaceNames = const ['Personal'],
   });
 
   final ThemeMode themeMode;
@@ -83,14 +87,30 @@ class AppSettings {
   /// Persisted so the sidebar stays collapsed/expanded across restarts.
   final bool sidebarExpanded;
 
-  /// Cosmetic only — see the design handoff's workspace switcher, which is
-  /// demo-only cycling with no effect on data (ProCheck has no real
-  /// multi-workspace data model).
+  /// Which of [workspaceNames] is active. Cosmetic — see the design
+  /// handoff's workspace switcher; ProCheck has no real multi-workspace
+  /// data model, so switching workspaces doesn't partition projects/tasks.
   final int workspaceIndex;
+
+  /// User-managed list of workspace names (Add/Edit/Remove via the
+  /// sidebar's workspace row context menu). A fresh install seeds exactly
+  /// one, "Personal" — always at least one, since [removeWorkspace] refuses
+  /// to drop the last remaining name.
+  final List<String> workspaceNames;
+
+  String get currentWorkspaceName =>
+      workspaceNames[workspaceIndex.clamp(0, workspaceNames.length - 1)];
 
   /// [AppScreen.index] of whichever screen was showing when the app last
   /// closed — used when [defaultLanding] is [LandingScreenOption.lastViewed].
   final int lastViewedScreenIndex;
+
+  /// User-rebound shortcuts, keyed by action. An action missing here still
+  /// uses [ShortcutBinding.defaults].
+  final Map<ShortcutAction, ShortcutBinding> shortcutOverrides;
+
+  ShortcutBinding shortcutFor(ShortcutAction action) =>
+      shortcutOverrides[action] ?? ShortcutBinding.defaults[action]!;
 
   Color get accentColor =>
       customAccentValue != null ? Color(customAccentValue!) : accentPalette[accentIndex];
@@ -109,6 +129,8 @@ class AppSettings {
     bool? sidebarExpanded,
     int? workspaceIndex,
     int? lastViewedScreenIndex,
+    Map<ShortcutAction, ShortcutBinding>? shortcutOverrides,
+    List<String>? workspaceNames,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -124,7 +146,51 @@ class AppSettings {
       workspaceIndex: workspaceIndex ?? this.workspaceIndex,
       lastViewedScreenIndex:
           lastViewedScreenIndex ?? this.lastViewedScreenIndex,
+      shortcutOverrides: shortcutOverrides ?? this.shortcutOverrides,
+      workspaceNames: workspaceNames ?? this.workspaceNames,
     );
+  }
+
+  static Map<String, dynamic> _shortcutToJson(ShortcutBinding binding) => {
+    'keyId': binding.key.keyId,
+    'cmdOrCtrl': binding.cmdOrCtrl,
+    'shift': binding.shift,
+    'alt': binding.alt,
+  };
+
+  static ShortcutBinding? _shortcutFromJson(Map<dynamic, dynamic>? json) {
+    if (json == null) return null;
+    final keyId = json['keyId'] as int?;
+    if (keyId == null) return null;
+    final key = LogicalKeyboardKey.findKeyByKeyId(keyId);
+    if (key == null) return null;
+    return ShortcutBinding(
+      key: key,
+      cmdOrCtrl: json['cmdOrCtrl'] as bool? ?? false,
+      shift: json['shift'] as bool? ?? false,
+      alt: json['alt'] as bool? ?? false,
+    );
+  }
+
+  static Map<String, dynamic> _shortcutOverridesToJson(
+    Map<ShortcutAction, ShortcutBinding> overrides,
+  ) => {
+    for (final entry in overrides.entries)
+      entry.key.name: _shortcutToJson(entry.value),
+  };
+
+  static Map<ShortcutAction, ShortcutBinding> _shortcutOverridesFromJson(
+    Map<dynamic, dynamic>? json,
+  ) {
+    if (json == null) return const {};
+    final result = <ShortcutAction, ShortcutBinding>{};
+    for (final action in ShortcutAction.values) {
+      final binding = _shortcutFromJson(
+        json[action.name] as Map<dynamic, dynamic>?,
+      );
+      if (binding != null) result[action] = binding;
+    }
+    return result;
   }
 
   Map<String, dynamic> toJson() => {
@@ -138,6 +204,8 @@ class AppSettings {
     'sidebarExpanded': sidebarExpanded,
     'workspaceIndex': workspaceIndex,
     'lastViewedScreenIndex': lastViewedScreenIndex,
+    'shortcutOverrides': _shortcutOverridesToJson(shortcutOverrides),
+    'workspaceNames': workspaceNames,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -156,9 +224,23 @@ class AppSettings {
       sidebarExpanded: json['sidebarExpanded'] as bool? ?? true,
       workspaceIndex: json['workspaceIndex'] as int? ?? 0,
       lastViewedScreenIndex: json['lastViewedScreenIndex'] as int? ?? 0,
+      shortcutOverrides: _shortcutOverridesFromJson(
+        json['shortcutOverrides'] as Map<dynamic, dynamic>?,
+      ),
+      workspaceNames: _nonEmptyWorkspaceNames(
+        (json['workspaceNames'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+      ),
     );
   }
 }
+
+/// Never lets the app end up with zero workspace names, however a backup
+/// happened to be shaped — same guarantee [SettingsNotifier.removeWorkspace]
+/// enforces during normal use.
+List<String> _nonEmptyWorkspaceNames(List<String>? names) =>
+    (names == null || names.isEmpty) ? const ['Personal'] : names;
 
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
   ref,
@@ -194,7 +276,35 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       workspaceIndex: _box.get('workspaceIndex', defaultValue: 0) as int,
       lastViewedScreenIndex:
           _box.get('lastViewedScreenIndex', defaultValue: 0) as int,
+      shortcutOverrides: _loadShortcutOverrides(),
+      workspaceNames: _nonEmptyWorkspaceNames(
+        (_box.get('workspaceNames') as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+      ),
     );
+  }
+
+  static Map<ShortcutAction, ShortcutBinding> _loadShortcutOverrides() {
+    final result = <ShortcutAction, ShortcutBinding>{};
+    for (final action in ShortcutAction.values) {
+      final keyId = _box.get('shortcut_${action.name}_keyId') as int?;
+      if (keyId == null) continue;
+      final key = LogicalKeyboardKey.findKeyByKeyId(keyId);
+      if (key == null) continue;
+      result[action] = ShortcutBinding(
+        key: key,
+        cmdOrCtrl:
+            _box.get('shortcut_${action.name}_cmdOrCtrl', defaultValue: false)
+                as bool,
+        shift:
+            _box.get('shortcut_${action.name}_shift', defaultValue: false)
+                as bool,
+        alt: _box.get('shortcut_${action.name}_alt', defaultValue: false)
+            as bool,
+      );
+    }
+    return result;
   }
 
   void setThemeMode(ThemeMode mode) {
@@ -239,11 +349,74 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('sidebarExpanded', expanded));
   }
 
-  /// Cycles the cosmetic workspace switcher — see [AppSettings.workspaceIndex].
-  void cycleWorkspace(int workspaceCount) {
-    final next = (state.workspaceIndex + 1) % workspaceCount;
+  /// Cycles to the next workspace — see [AppSettings.workspaceIndex].
+  void cycleWorkspace() {
+    final next = (state.workspaceIndex + 1) % state.workspaceNames.length;
     state = state.copyWith(workspaceIndex: next);
     unawaited(_box.put('workspaceIndex', next));
+  }
+
+  void _saveWorkspaces(List<String> names, int index) {
+    state = state.copyWith(workspaceNames: names, workspaceIndex: index);
+    unawaited(_box.put('workspaceNames', names));
+    unawaited(_box.put('workspaceIndex', index));
+  }
+
+  /// Adds a new workspace named [name] and switches to it.
+  void addWorkspace(String name) {
+    final names = [...state.workspaceNames, name];
+    _saveWorkspaces(names, names.length - 1);
+  }
+
+  /// Renames the workspace at [index].
+  void renameWorkspace(int index, String name) {
+    if (index < 0 || index >= state.workspaceNames.length) return;
+    final names = [...state.workspaceNames];
+    names[index] = name;
+    _saveWorkspaces(names, state.workspaceIndex);
+  }
+
+  /// Removes the workspace at [index]. Refuses to drop the last remaining
+  /// one — returns false when that guard blocked the removal, true once it
+  /// actually happened, so the caller can surface a message either way.
+  bool removeWorkspace(int index) {
+    if (state.workspaceNames.length <= 1) return false;
+    if (index < 0 || index >= state.workspaceNames.length) return false;
+    final names = [...state.workspaceNames]..removeAt(index);
+    final newIndex = state.workspaceIndex >= names.length
+        ? names.length - 1
+        : (state.workspaceIndex > index
+              ? state.workspaceIndex - 1
+              : state.workspaceIndex);
+    _saveWorkspaces(names, newIndex);
+    return true;
+  }
+
+  /// Rebinds [action] to [binding]. Callers are expected to have already
+  /// checked [AppSettings.shortcutOverrides] (via [AppSettings.shortcutFor])
+  /// for a duplicate against the app's other shortcuts before calling this —
+  /// this method itself doesn't validate, so it can also be used to restore
+  /// a backup that (in principle) recorded a conflict.
+  void setShortcutBinding(ShortcutAction action, ShortcutBinding binding) {
+    state = state.copyWith(
+      shortcutOverrides: {...state.shortcutOverrides, action: binding},
+    );
+    unawaited(_box.put('shortcut_${action.name}_keyId', binding.key.keyId));
+    unawaited(
+      _box.put('shortcut_${action.name}_cmdOrCtrl', binding.cmdOrCtrl),
+    );
+    unawaited(_box.put('shortcut_${action.name}_shift', binding.shift));
+    unawaited(_box.put('shortcut_${action.name}_alt', binding.alt));
+  }
+
+  /// Reverts [action] back to [ShortcutBinding.defaults].
+  void resetShortcutBinding(ShortcutAction action) {
+    final overrides = {...state.shortcutOverrides}..remove(action);
+    state = state.copyWith(shortcutOverrides: overrides);
+    unawaited(_box.delete('shortcut_${action.name}_keyId'));
+    unawaited(_box.delete('shortcut_${action.name}_cmdOrCtrl'));
+    unawaited(_box.delete('shortcut_${action.name}_shift'));
+    unawaited(_box.delete('shortcut_${action.name}_alt'));
   }
 
   /// Records the current screen so a "Last viewed" landing preference can
@@ -280,9 +453,32 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('defaultLanding', settings.defaultLanding.index));
     unawaited(_box.put('sidebarExpanded', settings.sidebarExpanded));
     unawaited(_box.put('workspaceIndex', settings.workspaceIndex));
+    unawaited(_box.put('workspaceNames', settings.workspaceNames));
     unawaited(
       _box.put('lastViewedScreenIndex', settings.lastViewedScreenIndex),
     );
+    for (final action in ShortcutAction.values) {
+      unawaited(_box.delete('shortcut_${action.name}_keyId'));
+      unawaited(_box.delete('shortcut_${action.name}_cmdOrCtrl'));
+      unawaited(_box.delete('shortcut_${action.name}_shift'));
+      unawaited(_box.delete('shortcut_${action.name}_alt'));
+    }
+    for (final entry in settings.shortcutOverrides.entries) {
+      final binding = entry.value;
+      unawaited(
+        _box.put('shortcut_${entry.key.name}_keyId', binding.key.keyId),
+      );
+      unawaited(
+        _box.put(
+          'shortcut_${entry.key.name}_cmdOrCtrl',
+          binding.cmdOrCtrl,
+        ),
+      );
+      unawaited(
+        _box.put('shortcut_${entry.key.name}_shift', binding.shift),
+      );
+      unawaited(_box.put('shortcut_${entry.key.name}_alt', binding.alt));
+    }
     state = settings;
   }
 }
