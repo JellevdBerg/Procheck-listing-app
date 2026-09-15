@@ -8,10 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/backup_service.dart';
+import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
+import '../widgets/nocturne/nocturne_widgets.dart';
 import '../widgets/text_prompt_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -19,96 +22,381 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.all(16.8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 22.4),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = (constraints.maxWidth / 300).floor().clamp(1, 3);
+                return SingleChildScrollView(
+                  key: const Key('settings-scroll'),
+                  child: Wrap(
+                    spacing: 22.4,
+                    runSpacing: 22.4,
+                    children: [
+                      SizedBox(
+                        width: (constraints.maxWidth - 22.4 * (columns - 1)) /
+                            columns,
+                        child: const _AppearanceCard(),
+                      ),
+                      SizedBox(
+                        width: (constraints.maxWidth - 22.4 * (columns - 1)) /
+                            columns,
+                        child: const _TaskDefaultsCard(),
+                      ),
+                      SizedBox(
+                        width: (constraints.maxWidth - 22.4 * (columns - 1)) /
+                            columns,
+                        child: const _BackupCard(),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CardTitle extends StatelessWidget {
+  const _CardTitle(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.8),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+}
+
+class _AppearanceCard extends ConsumerWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          const _SectionLabel('Appearance'),
-          RadioGroup<ThemeMode>(
-            groupValue: settings.themeMode,
-            onChanged: (mode) => notifier.setThemeMode(mode!),
-            child: const Column(
-              children: [
-                RadioListTile<ThemeMode>(
-                  title: Text('Match system'),
-                  value: ThemeMode.system,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: Text('Light'),
-                  value: ThemeMode.light,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: Text('Dark'),
-                  value: ThemeMode.dark,
-                ),
-              ],
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CardTitle('Appearance'),
+            const NocturneSectionLabel('THEME', padding: EdgeInsets.only(bottom: 8)),
+            RadioGroup<ThemeMode>(
+              groupValue: settings.themeMode,
+              onChanged: (mode) => notifier.setThemeMode(mode!),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  RadioListTile<ThemeMode>(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text('Match system'),
+                    value: ThemeMode.system,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text('Light'),
+                    value: ThemeMode.light,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text('Dark'),
+                    value: ThemeMode.dark,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(),
-          const _SectionLabel('Accent color'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Wrap(
-              spacing: 12,
+            const SizedBox(height: 16.8),
+            Text('Accent color', style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 8.4),
+            Wrap(
+              spacing: 10,
               runSpacing: 12,
               children: [
                 for (var i = 0; i < accentPalette.length; i++)
-                  _ColorSwatch(
+                  _AccentSwatch(
                     color: accentPalette[i],
-                    selected: settings.accentIndex == i,
+                    selected:
+                        settings.customAccentValue == null &&
+                        settings.accentIndex == i,
                     onTap: () => notifier.setAccentIndex(i),
                   ),
+                _CustomAccentSwatch(
+                  selected: settings.customAccentValue != null,
+                  color: settings.customAccentValue != null
+                      ? Color(settings.customAccentValue!)
+                      : null,
+                  onPicked: notifier.setCustomAccentColor,
+                ),
               ],
             ),
-          ),
-          const Divider(),
-          const _SectionLabel('Motion'),
-          SwitchListTile(
-            title: const Text('Reduce motion'),
-            subtitle: const Text(
-              'Use quick fades instead of sliding/scaling animations',
+            const SizedBox(height: 16.8),
+            const NocturneSectionLabel('MOTION', padding: EdgeInsets.only(bottom: 8)),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Reduce motion'),
+              subtitle: const Text(
+                'Quick fades instead of sliding/scaling animations',
+              ),
+              value: settings.reduceMotion,
+              onChanged: notifier.setReduceMotion,
             ),
-            value: settings.reduceMotion,
-            onChanged: notifier.setReduceMotion,
-          ),
-          const Divider(),
-          const _SectionLabel('Backup & restore'),
-          ListTile(
-            leading: const Icon(Icons.upload_file_outlined),
-            title: const Text('Export backup'),
-            subtitle: const Text(
-              'Saves every project, task, and template to a JSON file',
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: selected
+              ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2)
+              : null,
+        ),
+        child: selected
+            ? const Icon(Icons.check, color: Colors.white, size: 14)
+            : null,
+      ),
+    );
+  }
+}
+
+class _CustomAccentSwatch extends StatelessWidget {
+  const _CustomAccentSwatch({
+    required this.selected,
+    required this.color,
+    required this.onPicked,
+  });
+
+  final bool selected;
+  final Color? color;
+  final ValueChanged<Color> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showCustomColorDialog(context, color ?? Colors.purple);
+        if (picked != null) onPicked(picked);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: color == null
+              ? const SweepGradient(
+                  colors: [
+                    Color(0xFFFF5C5C),
+                    Color(0xFFFFC93C),
+                    Color(0xFF3DDC84),
+                    Color(0xFF6A95D6),
+                    Color(0xFFB07FD6),
+                    Color(0xFFFF5C5C),
+                  ],
+                )
+              : null,
+          color: color,
+          border: selected
+              ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2)
+              : Border.all(color: Theme.of(context).dividerColor),
+        ),
+        child: selected
+            ? const Icon(Icons.check, color: Colors.white, size: 14)
+            : null,
+      ),
+    );
+  }
+}
+
+/// A minimal hex-input color picker — deliberately simple rather than
+/// pulling in a color-picker package for one dialog.
+Future<Color?> showCustomColorDialog(BuildContext context, Color initial) {
+  final controller = TextEditingController(
+    text: '#${initial.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+  );
+  return showDialog<Color>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Custom accent color'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Hex color',
+          hintText: '#9184D9',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final parsed = _parseHexColor(controller.text);
+            Navigator.of(context).pop(parsed);
+          },
+          child: const Text('Use color'),
+        ),
+      ],
+    ),
+  );
+}
+
+Color? _parseHexColor(String input) {
+  var hex = input.trim().replaceFirst('#', '');
+  if (hex.length == 6) hex = 'FF$hex';
+  if (hex.length != 8) return null;
+  final value = int.tryParse(hex, radix: 16);
+  return value == null ? null : Color(value);
+}
+
+class _TaskDefaultsCard extends ConsumerWidget {
+  const _TaskDefaultsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CardTitle('Task defaults'),
+            Text('Default priority', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 8.4),
+            NocturneSegmented<TaskPriority>(
+              options: TaskPriority.values,
+              value: settings.defaultPriority,
+              labelBuilder: (p) => p.label,
+              onChanged: notifier.setDefaultPriority,
             ),
-            onTap: () => _exportBackup(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.download_outlined),
-            title: const Text('Import backup'),
-            subtitle: const Text(
-              'Replaces everything currently in ProCheck with a backup file',
+            const SizedBox(height: 16.8),
+            Text('Date format', style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 4),
+            RadioGroup<DateFormatOption>(
+              groupValue: settings.dateFormat,
+              onChanged: (v) => notifier.setDateFormat(v!),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final option in DateFormatOption.values)
+                    RadioListTile<DateFormatOption>(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(option.label),
+                      value: option,
+                    ),
+                ],
+              ),
             ),
-            onTap: () => _importBackup(context, ref),
-          ),
-          const Divider(),
-          const _SectionLabel('Danger zone'),
-          ListTile(
-            leading: Icon(
-              Icons.delete_forever_outlined,
-              color: Theme.of(context).colorScheme.error,
+            const SizedBox(height: 16.8),
+            Text(
+              'Default landing screen',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            title: Text(
-              'Wipe all data',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            const SizedBox(height: 8.4),
+            NocturneSegmented<LandingScreenOption>(
+              options: LandingScreenOption.values,
+              value: settings.defaultLanding,
+              labelBuilder: (o) => o.label,
+              onChanged: notifier.setDefaultLanding,
             ),
-            subtitle: const Text(
-              'Permanently deletes every project, task, and template',
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupCard extends ConsumerWidget {
+  const _BackupCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CardTitle('Backup & danger zone'),
+            const NocturneSectionLabel(
+              'BACKUP & RESTORE',
+              padding: EdgeInsets.only(bottom: 8),
             ),
-            onTap: () => _confirmWipe(context, ref),
-          ),
-        ],
+            NocturneButton(
+              label: 'Export backup',
+              icon: Icons.upload_file_outlined,
+              onPressed: () => _exportBackup(context, ref),
+            ),
+            const SizedBox(height: 8),
+            NocturneButton(
+              label: 'Import backup',
+              icon: Icons.download_outlined,
+              onPressed: () => _importBackup(context, ref),
+            ),
+            const SizedBox(height: 16.8),
+            const NocturneSectionLabel(
+              'DANGER ZONE',
+              padding: EdgeInsets.only(bottom: 8),
+            ),
+            NocturneButton(
+              label: 'Wipe all data',
+              icon: Icons.delete_outline,
+              color: NocturneStatus.dangerBorder,
+              onPressed: () => _confirmWipe(context, ref),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -130,12 +418,9 @@ class SettingsScreen extends ConsumerWidget {
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: ['json'],
-      // Only actually used by file_picker on web (it triggers the browser
-      // download); desktop/mobile just returns a path and the bytes below
-      // are written by hand instead.
       bytes: bytes,
     );
-    if (savedPath == null) return; // user cancelled
+    if (savedPath == null) return;
 
     if (!kIsWeb) {
       await File(savedPath).writeAsBytes(bytes);
@@ -163,9 +448,7 @@ class SettingsScreen extends ConsumerWidget {
 
     final bytes = result.files.single.bytes;
     if (bytes == null) {
-      if (context.mounted) {
-        _showImportError(context, "Couldn't read that file.");
-      }
+      if (context.mounted) _showImportError(context, "Couldn't read that file.");
       return;
     }
 
@@ -203,8 +486,9 @@ class SettingsScreen extends ConsumerWidget {
     ref.read(settingsProvider.notifier).restoreAll(data.settings);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Backup imported.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Backup imported.')));
     }
   }
 
@@ -239,60 +523,5 @@ class SettingsScreen extends ConsumerWidget {
         const SnackBar(content: Text('All ProCheck data has been wiped.')),
       );
     }
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.labelLarge
-            ?.copyWith(color: Theme.of(context).hintColor),
-      ),
-    );
-  }
-}
-
-class _ColorSwatch extends StatelessWidget {
-  const _ColorSwatch({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: selected
-              ? Border.all(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  width: 3,
-                )
-              : null,
-        ),
-        child: selected
-            ? const Icon(Icons.check, color: Colors.white, size: 18)
-            : null,
-      ),
-    );
   }
 }

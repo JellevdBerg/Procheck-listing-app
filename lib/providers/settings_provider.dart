@@ -5,42 +5,125 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
 import '../data/hive_setup.dart';
+import '../models/task_priority.dart';
+import '../theme/nocturne_theme.dart';
 
-/// A small curated palette so the accent picker is a handful of good-looking
-/// swatches rather than a full color wheel.
-const List<Color> accentPalette = [
-  Color(0xFF3D5AFE), // indigo (default)
-  Color(0xFF2979FF), // blue
-  Color(0xFF00BFA5), // teal
-  Color(0xFF00C853), // green
-  Color(0xFFFF6D00), // orange
-  Color(0xFFFF3D71), // pink
-  Color(0xFFD500F9), // purple
-  Color(0xFF6D4C41), // brown
-];
+/// The 8 preset accent swatches — also doubles as the per-project color
+/// palette (`Project.colorIndex` indexes into this same list), matching the
+/// design handoff where a project's color and the app's accent draw from
+/// one palette.
+const List<Color> accentPalette = nocturneAccentPalette;
+
+enum DateFormatOption {
+  mdy,
+  dmy,
+  iso;
+
+  static DateFormatOption fromIndex(int? index) {
+    if (index == null || index < 0 || index >= DateFormatOption.values.length) {
+      return DateFormatOption.mdy;
+    }
+    return DateFormatOption.values[index];
+  }
+
+  String get label => switch (this) {
+    DateFormatOption.mdy => 'MM/DD/YYYY',
+    DateFormatOption.dmy => 'DD/MM/YYYY',
+    DateFormatOption.iso => 'YYYY-MM-DD',
+  };
+}
+
+enum LandingScreenOption {
+  projects,
+  templates,
+  lastViewed;
+
+  static LandingScreenOption fromIndex(int? index) {
+    if (index == null ||
+        index < 0 ||
+        index >= LandingScreenOption.values.length) {
+      return LandingScreenOption.projects;
+    }
+    return LandingScreenOption.values[index];
+  }
+
+  String get label => switch (this) {
+    LandingScreenOption.projects => 'Projects',
+    LandingScreenOption.templates => 'Templates',
+    LandingScreenOption.lastViewed => 'Last viewed',
+  };
+}
 
 class AppSettings {
   const AppSettings({
     required this.themeMode,
     required this.accentIndex,
     required this.reduceMotion,
+    this.customAccentValue,
+    this.defaultPriorityIndex = 0,
+    this.dateFormat = DateFormatOption.mdy,
+    this.defaultLanding = LandingScreenOption.projects,
+    this.sidebarExpanded = true,
+    this.workspaceIndex = 0,
+    this.lastViewedScreenIndex = 0,
   });
 
   final ThemeMode themeMode;
   final int accentIndex;
   final bool reduceMotion;
 
-  Color get accentColor => accentPalette[accentIndex];
+  /// When set, overrides [accentIndex] — a user-picked custom color from
+  /// Settings > Appearance rather than one of the [accentPalette] presets.
+  final int? customAccentValue;
+
+  final int defaultPriorityIndex;
+  final DateFormatOption dateFormat;
+  final LandingScreenOption defaultLanding;
+
+  /// Persisted so the sidebar stays collapsed/expanded across restarts.
+  final bool sidebarExpanded;
+
+  /// Cosmetic only — see the design handoff's workspace switcher, which is
+  /// demo-only cycling with no effect on data (ProCheck has no real
+  /// multi-workspace data model).
+  final int workspaceIndex;
+
+  /// [AppScreen.index] of whichever screen was showing when the app last
+  /// closed — used when [defaultLanding] is [LandingScreenOption.lastViewed].
+  final int lastViewedScreenIndex;
+
+  Color get accentColor =>
+      customAccentValue != null ? Color(customAccentValue!) : accentPalette[accentIndex];
+
+  TaskPriority get defaultPriority => TaskPriority.fromIndex(defaultPriorityIndex);
 
   AppSettings copyWith({
     ThemeMode? themeMode,
     int? accentIndex,
     bool? reduceMotion,
+    int? customAccentValue,
+    bool clearCustomAccent = false,
+    int? defaultPriorityIndex,
+    DateFormatOption? dateFormat,
+    LandingScreenOption? defaultLanding,
+    bool? sidebarExpanded,
+    int? workspaceIndex,
+    int? lastViewedScreenIndex,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       accentIndex: accentIndex ?? this.accentIndex,
       reduceMotion: reduceMotion ?? this.reduceMotion,
+      customAccentValue: clearCustomAccent
+          ? null
+          : (customAccentValue ?? this.customAccentValue),
+      defaultPriorityIndex: defaultPriorityIndex ?? this.defaultPriorityIndex,
+      dateFormat: dateFormat ?? this.dateFormat,
+      defaultLanding: defaultLanding ?? this.defaultLanding,
+      sidebarExpanded: sidebarExpanded ?? this.sidebarExpanded,
+      workspaceIndex: workspaceIndex ?? this.workspaceIndex,
+      lastViewedScreenIndex:
+          lastViewedScreenIndex ?? this.lastViewedScreenIndex,
     );
   }
 
@@ -48,6 +131,13 @@ class AppSettings {
     'themeMode': themeMode.index,
     'accentIndex': accentIndex,
     'reduceMotion': reduceMotion,
+    'customAccentValue': customAccentValue,
+    'defaultPriorityIndex': defaultPriorityIndex,
+    'dateFormat': dateFormat.index,
+    'defaultLanding': defaultLanding.index,
+    'sidebarExpanded': sidebarExpanded,
+    'workspaceIndex': workspaceIndex,
+    'lastViewedScreenIndex': lastViewedScreenIndex,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -57,6 +147,15 @@ class AppSettings {
           .values[(json['themeMode'] as int?) ?? ThemeMode.system.index],
       accentIndex: accentIndex.clamp(0, accentPalette.length - 1),
       reduceMotion: json['reduceMotion'] as bool? ?? false,
+      customAccentValue: json['customAccentValue'] as int?,
+      defaultPriorityIndex: json['defaultPriorityIndex'] as int? ?? 0,
+      dateFormat: DateFormatOption.fromIndex(json['dateFormat'] as int?),
+      defaultLanding: LandingScreenOption.fromIndex(
+        json['defaultLanding'] as int?,
+      ),
+      sidebarExpanded: json['sidebarExpanded'] as bool? ?? true,
+      workspaceIndex: json['workspaceIndex'] as int? ?? 0,
+      lastViewedScreenIndex: json['lastViewedScreenIndex'] as int? ?? 0,
     );
   }
 }
@@ -82,6 +181,19 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       themeMode: ThemeMode.values[themeModeIndex],
       accentIndex: accentIndex.clamp(0, accentPalette.length - 1),
       reduceMotion: reduceMotion,
+      customAccentValue: _box.get('customAccentValue') as int?,
+      defaultPriorityIndex:
+          _box.get('defaultPriorityIndex', defaultValue: 0) as int,
+      dateFormat: DateFormatOption.fromIndex(
+        _box.get('dateFormat') as int?,
+      ),
+      defaultLanding: LandingScreenOption.fromIndex(
+        _box.get('defaultLanding') as int?,
+      ),
+      sidebarExpanded: _box.get('sidebarExpanded', defaultValue: true) as bool,
+      workspaceIndex: _box.get('workspaceIndex', defaultValue: 0) as int,
+      lastViewedScreenIndex:
+          _box.get('lastViewedScreenIndex', defaultValue: 0) as int,
     );
   }
 
@@ -91,13 +203,54 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   }
 
   void setAccentIndex(int index) {
-    state = state.copyWith(accentIndex: index);
+    state = state.copyWith(accentIndex: index, clearCustomAccent: true);
     unawaited(_box.put('accentIndex', index));
+    unawaited(_box.delete('customAccentValue'));
+  }
+
+  void setCustomAccentColor(Color color) {
+    final value = color.toARGB32();
+    state = state.copyWith(customAccentValue: value);
+    unawaited(_box.put('customAccentValue', value));
   }
 
   void setReduceMotion(bool value) {
     state = state.copyWith(reduceMotion: value);
     unawaited(_box.put('reduceMotion', value));
+  }
+
+  void setDefaultPriority(TaskPriority priority) {
+    state = state.copyWith(defaultPriorityIndex: priority.index);
+    unawaited(_box.put('defaultPriorityIndex', priority.index));
+  }
+
+  void setDateFormat(DateFormatOption format) {
+    state = state.copyWith(dateFormat: format);
+    unawaited(_box.put('dateFormat', format.index));
+  }
+
+  void setDefaultLanding(LandingScreenOption option) {
+    state = state.copyWith(defaultLanding: option);
+    unawaited(_box.put('defaultLanding', option.index));
+  }
+
+  void setSidebarExpanded(bool expanded) {
+    state = state.copyWith(sidebarExpanded: expanded);
+    unawaited(_box.put('sidebarExpanded', expanded));
+  }
+
+  /// Cycles the cosmetic workspace switcher — see [AppSettings.workspaceIndex].
+  void cycleWorkspace(int workspaceCount) {
+    final next = (state.workspaceIndex + 1) % workspaceCount;
+    state = state.copyWith(workspaceIndex: next);
+    unawaited(_box.put('workspaceIndex', next));
+  }
+
+  /// Records the current screen so a "Last viewed" landing preference can
+  /// return to it next launch. Not exposed as user-visible state, so it
+  /// updates the box directly without touching [state]/notifying listeners.
+  void recordLastViewedScreen(int screenIndex) {
+    unawaited(_box.put('lastViewedScreenIndex', screenIndex));
   }
 
   /// Resets settings to their defaults. Used by Settings > Wipe All Data.
@@ -115,6 +268,21 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('themeMode', settings.themeMode.index));
     unawaited(_box.put('accentIndex', settings.accentIndex));
     unawaited(_box.put('reduceMotion', settings.reduceMotion));
+    if (settings.customAccentValue != null) {
+      unawaited(_box.put('customAccentValue', settings.customAccentValue));
+    } else {
+      unawaited(_box.delete('customAccentValue'));
+    }
+    unawaited(
+      _box.put('defaultPriorityIndex', settings.defaultPriorityIndex),
+    );
+    unawaited(_box.put('dateFormat', settings.dateFormat.index));
+    unawaited(_box.put('defaultLanding', settings.defaultLanding.index));
+    unawaited(_box.put('sidebarExpanded', settings.sidebarExpanded));
+    unawaited(_box.put('workspaceIndex', settings.workspaceIndex));
+    unawaited(
+      _box.put('lastViewedScreenIndex', settings.lastViewedScreenIndex),
+    );
     state = settings;
   }
 }

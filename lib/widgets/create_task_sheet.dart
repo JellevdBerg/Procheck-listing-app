@@ -5,6 +5,7 @@ import '../models/project.dart';
 import '../models/task.dart';
 import '../models/task_template.dart';
 import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'blurred_dialog.dart';
@@ -156,15 +157,21 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
     if (name.isEmpty) return;
 
     final notifier = ref.read(tasksProvider.notifier);
+    final defaultPriority = ref.read(settingsProvider).defaultPriority;
     final Task task;
     if (_selectedTemplate != null) {
       task = notifier.addFromTemplate(
         template: _selectedTemplate!,
         projectId: _selectedProjectId,
         title: name,
+        priority: defaultPriority,
       );
     } else {
-      task = notifier.addBlankTask(title: name, projectId: _selectedProjectId);
+      task = notifier.addBlankTask(
+        title: name,
+        projectId: _selectedProjectId,
+        priority: defaultPriority,
+      );
     }
 
     Navigator.of(context).pop(task);

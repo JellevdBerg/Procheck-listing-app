@@ -6,23 +6,44 @@ import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
 import '../data/notification_service.dart';
+import '../models/activity_entry.dart';
+import '../models/attachment.dart';
 import '../models/subtask.dart';
 import '../models/task.dart';
+import '../models/task_priority.dart';
 import '../models/task_template.dart';
+import 'projects_provider.dart';
 
 final tasksProvider = StateNotifierProvider<TasksNotifier, List<Task>>((ref) {
-  return TasksNotifier();
+  return TasksNotifier(ref);
 });
 
 /// Persistence to Hive is fire-and-forget: [state] is the source of truth
 /// for the UI and is updated synchronously, while the on-disk copy catches
 /// up in the background.
 class TasksNotifier extends StateNotifier<List<Task>> {
-  TasksNotifier() : super(_box.values.toList()) {
+  TasksNotifier(this._ref) : super(_box.values.toList()) {
     _sortState();
   }
 
+  final Ref _ref;
+
   static Box<Task> get _box => Hive.box<Task>(taskBoxName);
+
+  /// Logs a task-level event to its parent project's Activity log — a
+  /// no-op for unfiled tasks (no project to log against).
+  void _logActivity(Task task, ActivityKind kind, String description) {
+    final projectId = task.projectId;
+    if (projectId == null) return;
+    _ref.read(projectsProvider.notifier).logActivity(
+      projectId,
+      ActivityEntry(
+        kindIndex: kind.index,
+        description: description,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
 
   void _sortState() {
     final sorted = [...state]
@@ -46,14 +67,24 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _replace(task);
   }
 
-  Task addBlankTask({required String title, String? projectId}) {
-    return _addTask(title: title, projectId: projectId, subtasks: const []);
+  Task addBlankTask({
+    required String title,
+    String? projectId,
+    TaskPriority priority = TaskPriority.none,
+  }) {
+    return _addTask(
+      title: title,
+      projectId: projectId,
+      subtasks: const [],
+      priority: priority,
+    );
   }
 
   Task addFromTemplate({
     required TaskTemplate template,
     String? projectId,
     String? title,
+    TaskPriority priority = TaskPriority.none,
   }) {
     final subtasks = template.subtasks
         .map(
@@ -66,6 +97,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       projectId: projectId,
       subtasks: subtasks,
       templateId: template.id,
+      priority: priority,
     );
   }
 
@@ -74,6 +106,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     String? projectId,
     required List<Subtask> subtasks,
     String? templateId,
+    TaskPriority priority = TaskPriority.none,
   }) {
     final task = Task(
       id: const Uuid().v4(),
@@ -82,9 +115,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       createdAt: DateTime.now(),
       projectId: projectId,
       templateId: templateId,
+      priorityIndex: priority.index,
     );
     unawaited(_box.put(task.id, task));
     state = [task, ...state];
+    _logActivity(task, ActivityKind.taskAdded, 'You added "${task.title}"');
     return task;
   }
 
@@ -93,6 +128,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     if (task == null) return;
     task.title = title;
     _persist(task);
+    _logActivity(task, ActivityKind.taskEdited, 'You edited "${task.title}"');
   }
 
   void moveToProject(String taskId, String? projectId) {
@@ -159,6 +195,13 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
     _persist(task);
     _syncNotificationForCompletionChange(task);
+    if (newValue) {
+      _logActivity(
+        task,
+        ActivityKind.taskCompleted,
+        'You completed "${task.title}"',
+      );
+    }
   }
 
   void toggleSubtask(String taskId, String subtaskId) {
@@ -200,6 +243,29 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     task.dueDate = dueDate;
     _persist(task);
     unawaited(NotificationService.instance.scheduleForTask(task));
+  }
+
+  void setTaskPriority(String taskId, TaskPriority priority) {
+    final task = _box.get(taskId);
+    if (task == null) return;
+    task.priority = priority;
+    _persist(task);
+  }
+
+  void addAttachments(String taskId, List<Attachment> attachments) {
+    if (attachments.isEmpty) return;
+    final task = _box.get(taskId);
+    if (task == null) return;
+    task.attachments = [...task.attachments, ...attachments];
+    _persist(task);
+  }
+
+  void removeAttachment(String taskId, int index) {
+    final task = _box.get(taskId);
+    if (task == null) return;
+    if (index < 0 || index >= task.attachments.length) return;
+    task.attachments = [...task.attachments]..removeAt(index);
+    _persist(task);
   }
 
   void addSubtask(String taskId, String title) {

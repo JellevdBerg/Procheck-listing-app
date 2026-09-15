@@ -4,7 +4,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/activity_entry.dart';
+import '../models/attachment.dart';
 import '../models/project.dart';
+import '../models/project_comment.dart';
 import '../models/subtask.dart';
 import '../models/task.dart';
 import '../models/task_template.dart';
@@ -42,6 +45,9 @@ Future<void> setUpHive({String? testDirectoryPath}) async {
   _registerAdapter(ProjectAdapter());
   _registerAdapter(TemplateSubtaskAdapter());
   _registerAdapter(TaskTemplateAdapter());
+  _registerAdapter(AttachmentAdapter());
+  _registerAdapter(ActivityEntryAdapter());
+  _registerAdapter(ProjectCommentAdapter());
 
   await Future.wait([
     Hive.openBox<Project>(projectBoxName),

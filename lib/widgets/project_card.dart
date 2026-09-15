@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../providers/settings_provider.dart';
+import 'nocturne/nocturne_widgets.dart';
 import 'text_prompt_dialog.dart';
 
 /// The Hero tags a [ProjectCard]'s header shares with the thin bar header of
@@ -66,7 +67,7 @@ HeroFlightShuttleBuilder projectNameHeroFlightShuttleBuilder(
 /// A project tile for the home screen grid. [featured] gives the tall card
 /// with a preview of up to 4 tasks; otherwise it's a compact, name-only
 /// chip. Both reveal a delete button on hover.
-enum _ProjectCardAction { archive, remove }
+enum _ProjectCardAction { archive, remove, favorite }
 
 class ProjectCard extends StatefulWidget {
   const ProjectCard({
@@ -76,6 +77,7 @@ class ProjectCard extends StatefulWidget {
     required this.onTap,
     required this.onDelete,
     required this.onArchive,
+    required this.onToggleFavorite,
     this.featured = false,
     this.reduceMotion = false,
   });
@@ -85,6 +87,7 @@ class ProjectCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final VoidCallback onArchive;
+  final VoidCallback onToggleFavorite;
   final bool featured;
   final bool reduceMotion;
 
@@ -157,7 +160,7 @@ class _ProjectCardState extends State<ProjectCard> {
   /// as more actions get added.
   Widget _actionsMenu(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.more_vert, size: 20),
+      icon: Icon(Icons.more_vert, size: 20),
       tooltip: 'Project actions',
       onPressed: () => _openActionsMenu(context),
     );
@@ -183,13 +186,27 @@ class _ProjectCardState extends State<ProjectCard> {
     final action = await showMenu<_ProjectCardAction>(
       context: context,
       position: position,
-      items: const [
+      items: [
+        PopupMenuItem(
+          value: _ProjectCardAction.favorite,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              widget.project.favorite
+                  ? Icons.star
+                  : Icons.star_border,
+            ),
+            title: Text(
+              widget.project.favorite ? 'Unfavorite' : 'Favorite',
+            ),
+          ),
+        ),
         PopupMenuItem(
           value: _ProjectCardAction.archive,
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.archive_outlined),
-            title: Text('Archive'),
+            title: const Text('Archive'),
           ),
         ),
         PopupMenuItem(
@@ -197,7 +214,7 @@ class _ProjectCardState extends State<ProjectCard> {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.delete_outline),
-            title: Text('Remove'),
+            title: const Text('Remove'),
           ),
         ),
       ],
@@ -210,6 +227,8 @@ class _ProjectCardState extends State<ProjectCard> {
         widget.onArchive();
       case _ProjectCardAction.remove:
         _confirmDelete(context);
+      case _ProjectCardAction.favorite:
+        widget.onToggleFavorite();
       case null:
         break;
     }
@@ -343,7 +362,9 @@ class _TaskPreviewRow extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            task.isChecked ? Icons.check_circle : Icons.radio_button_unchecked,
+            task.isChecked
+                ? Icons.check_circle
+                : Icons.radio_button_unchecked,
             size: 14,
             color: task.isChecked ? Colors.green : theme.colorScheme.outline,
           ),
@@ -351,16 +372,24 @@ class _TaskPreviewRow extends StatelessWidget {
           Expanded(
             child: Text(
               task.title,
-              style: theme.textTheme.bodySmall,
+              style: theme.textTheme.bodySmall?.copyWith(
+                decoration: task.isChecked
+                    ? TextDecoration.lineThrough
+                    : null,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          ?NocturneTag.forPriority(task.priority),
           if (task.hasSubtasks)
-            Text(
-              '${task.completedSubtaskCount}/${task.subtasks.length}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.hintColor,
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text(
+                '${task.completedSubtaskCount}/${task.subtasks.length}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                ),
               ),
             ),
         ],
