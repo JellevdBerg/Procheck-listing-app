@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
 import '../data/hive_setup.dart';
+import '../models/shortcut_binding.dart';
 import '../models/task_priority.dart';
 import '../theme/nocturne_theme.dart';
 
@@ -66,6 +68,7 @@ class AppSettings {
     this.sidebarExpanded = true,
     this.workspaceIndex = 0,
     this.lastViewedScreenIndex = 0,
+    this.shortcutOverrides = const {},
   });
 
   final ThemeMode themeMode;
@@ -92,6 +95,13 @@ class AppSettings {
   /// closed — used when [defaultLanding] is [LandingScreenOption.lastViewed].
   final int lastViewedScreenIndex;
 
+  /// User-rebound shortcuts, keyed by action. An action missing here still
+  /// uses [ShortcutBinding.defaults].
+  final Map<ShortcutAction, ShortcutBinding> shortcutOverrides;
+
+  ShortcutBinding shortcutFor(ShortcutAction action) =>
+      shortcutOverrides[action] ?? ShortcutBinding.defaults[action]!;
+
   Color get accentColor =>
       customAccentValue != null ? Color(customAccentValue!) : accentPalette[accentIndex];
 
@@ -109,6 +119,7 @@ class AppSettings {
     bool? sidebarExpanded,
     int? workspaceIndex,
     int? lastViewedScreenIndex,
+    Map<ShortcutAction, ShortcutBinding>? shortcutOverrides,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -124,7 +135,50 @@ class AppSettings {
       workspaceIndex: workspaceIndex ?? this.workspaceIndex,
       lastViewedScreenIndex:
           lastViewedScreenIndex ?? this.lastViewedScreenIndex,
+      shortcutOverrides: shortcutOverrides ?? this.shortcutOverrides,
     );
+  }
+
+  static Map<String, dynamic> _shortcutToJson(ShortcutBinding binding) => {
+    'keyId': binding.key.keyId,
+    'cmdOrCtrl': binding.cmdOrCtrl,
+    'shift': binding.shift,
+    'alt': binding.alt,
+  };
+
+  static ShortcutBinding? _shortcutFromJson(Map<dynamic, dynamic>? json) {
+    if (json == null) return null;
+    final keyId = json['keyId'] as int?;
+    if (keyId == null) return null;
+    final key = LogicalKeyboardKey.findKeyByKeyId(keyId);
+    if (key == null) return null;
+    return ShortcutBinding(
+      key: key,
+      cmdOrCtrl: json['cmdOrCtrl'] as bool? ?? false,
+      shift: json['shift'] as bool? ?? false,
+      alt: json['alt'] as bool? ?? false,
+    );
+  }
+
+  static Map<String, dynamic> _shortcutOverridesToJson(
+    Map<ShortcutAction, ShortcutBinding> overrides,
+  ) => {
+    for (final entry in overrides.entries)
+      entry.key.name: _shortcutToJson(entry.value),
+  };
+
+  static Map<ShortcutAction, ShortcutBinding> _shortcutOverridesFromJson(
+    Map<dynamic, dynamic>? json,
+  ) {
+    if (json == null) return const {};
+    final result = <ShortcutAction, ShortcutBinding>{};
+    for (final action in ShortcutAction.values) {
+      final binding = _shortcutFromJson(
+        json[action.name] as Map<dynamic, dynamic>?,
+      );
+      if (binding != null) result[action] = binding;
+    }
+    return result;
   }
 
   Map<String, dynamic> toJson() => {
@@ -138,6 +192,7 @@ class AppSettings {
     'sidebarExpanded': sidebarExpanded,
     'workspaceIndex': workspaceIndex,
     'lastViewedScreenIndex': lastViewedScreenIndex,
+    'shortcutOverrides': _shortcutOverridesToJson(shortcutOverrides),
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -156,6 +211,9 @@ class AppSettings {
       sidebarExpanded: json['sidebarExpanded'] as bool? ?? true,
       workspaceIndex: json['workspaceIndex'] as int? ?? 0,
       lastViewedScreenIndex: json['lastViewedScreenIndex'] as int? ?? 0,
+      shortcutOverrides: _shortcutOverridesFromJson(
+        json['shortcutOverrides'] as Map<dynamic, dynamic>?,
+      ),
     );
   }
 }
@@ -194,7 +252,30 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       workspaceIndex: _box.get('workspaceIndex', defaultValue: 0) as int,
       lastViewedScreenIndex:
           _box.get('lastViewedScreenIndex', defaultValue: 0) as int,
+      shortcutOverrides: _loadShortcutOverrides(),
     );
+  }
+
+  static Map<ShortcutAction, ShortcutBinding> _loadShortcutOverrides() {
+    final result = <ShortcutAction, ShortcutBinding>{};
+    for (final action in ShortcutAction.values) {
+      final keyId = _box.get('shortcut_${action.name}_keyId') as int?;
+      if (keyId == null) continue;
+      final key = LogicalKeyboardKey.findKeyByKeyId(keyId);
+      if (key == null) continue;
+      result[action] = ShortcutBinding(
+        key: key,
+        cmdOrCtrl:
+            _box.get('shortcut_${action.name}_cmdOrCtrl', defaultValue: false)
+                as bool,
+        shift:
+            _box.get('shortcut_${action.name}_shift', defaultValue: false)
+                as bool,
+        alt: _box.get('shortcut_${action.name}_alt', defaultValue: false)
+            as bool,
+      );
+    }
+    return result;
   }
 
   void setThemeMode(ThemeMode mode) {
@@ -246,6 +327,33 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('workspaceIndex', next));
   }
 
+  /// Rebinds [action] to [binding]. Callers are expected to have already
+  /// checked [AppSettings.shortcutOverrides] (via [AppSettings.shortcutFor])
+  /// for a duplicate against the app's other shortcuts before calling this —
+  /// this method itself doesn't validate, so it can also be used to restore
+  /// a backup that (in principle) recorded a conflict.
+  void setShortcutBinding(ShortcutAction action, ShortcutBinding binding) {
+    state = state.copyWith(
+      shortcutOverrides: {...state.shortcutOverrides, action: binding},
+    );
+    unawaited(_box.put('shortcut_${action.name}_keyId', binding.key.keyId));
+    unawaited(
+      _box.put('shortcut_${action.name}_cmdOrCtrl', binding.cmdOrCtrl),
+    );
+    unawaited(_box.put('shortcut_${action.name}_shift', binding.shift));
+    unawaited(_box.put('shortcut_${action.name}_alt', binding.alt));
+  }
+
+  /// Reverts [action] back to [ShortcutBinding.defaults].
+  void resetShortcutBinding(ShortcutAction action) {
+    final overrides = {...state.shortcutOverrides}..remove(action);
+    state = state.copyWith(shortcutOverrides: overrides);
+    unawaited(_box.delete('shortcut_${action.name}_keyId'));
+    unawaited(_box.delete('shortcut_${action.name}_cmdOrCtrl'));
+    unawaited(_box.delete('shortcut_${action.name}_shift'));
+    unawaited(_box.delete('shortcut_${action.name}_alt'));
+  }
+
   /// Records the current screen so a "Last viewed" landing preference can
   /// return to it next launch. Not exposed as user-visible state, so it
   /// updates the box directly without touching [state]/notifying listeners.
@@ -283,6 +391,28 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(
       _box.put('lastViewedScreenIndex', settings.lastViewedScreenIndex),
     );
+    for (final action in ShortcutAction.values) {
+      unawaited(_box.delete('shortcut_${action.name}_keyId'));
+      unawaited(_box.delete('shortcut_${action.name}_cmdOrCtrl'));
+      unawaited(_box.delete('shortcut_${action.name}_shift'));
+      unawaited(_box.delete('shortcut_${action.name}_alt'));
+    }
+    for (final entry in settings.shortcutOverrides.entries) {
+      final binding = entry.value;
+      unawaited(
+        _box.put('shortcut_${entry.key.name}_keyId', binding.key.keyId),
+      );
+      unawaited(
+        _box.put(
+          'shortcut_${entry.key.name}_cmdOrCtrl',
+          binding.cmdOrCtrl,
+        ),
+      );
+      unawaited(
+        _box.put('shortcut_${entry.key.name}_shift', binding.shift),
+      );
+      unawaited(_box.put('shortcut_${entry.key.name}_alt', binding.alt));
+    }
     state = settings;
   }
 }
