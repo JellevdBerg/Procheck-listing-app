@@ -148,6 +148,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
   static const _featuredCardHeight = 280.0;
   static const _featuredCardMinWidth = 240.0;
   static const _gridPadding = 16.0;
+  static const _gridSpacing = 16.0;
 
   final _searchController = TextEditingController();
   String _query = '';
@@ -190,17 +191,19 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 
     return LayoutBuilder(
       builder: (context, outerConstraints) {
-        // How many featured cards fit in one row is what "on full display"
-        // means here: it grows with the window instead of a fixed count.
+        // How many featured cards fit in one row — based purely on the
+        // window width, not on how many projects actually exist, so a
+        // single project gets a naturally-sized card instead of stretching
+        // to fill the whole row.
         final availableWidth = outerConstraints.maxWidth - _gridPadding * 2;
-        final crossAxisCount = projects.isEmpty
-            ? 1
-            : (availableWidth / _featuredCardMinWidth).floor().clamp(
-                1,
-                projects.length,
-              );
-        final featuredProjects = projects.take(crossAxisCount).toList();
-        final otherProjects = projects.skip(crossAxisCount).toList();
+        final columnCapacity = (availableWidth / _featuredCardMinWidth)
+            .floor()
+            .clamp(1, 1 << 30);
+        final cardWidth =
+            (availableWidth - _gridSpacing * (columnCapacity - 1)) /
+            columnCapacity;
+        final featuredProjects = projects.take(columnCapacity).toList();
+        final otherProjects = projects.skip(columnCapacity).toList();
 
         return ListView(
           children: [
@@ -234,30 +237,28 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
               const _SectionHeader('Projects'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    mainAxisExtent: _featuredCardHeight,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: featuredProjects.length,
-                  itemBuilder: (context, index) {
-                    final project = featuredProjects[index];
-                    return ProjectCard(
-                      project: project,
-                      featured: true,
-                      tasks: tasks
-                          .where((t) => t.projectId == project.id)
-                          .toList(),
-                      onTap: () => openProject(project.id),
-                      onDelete: () => ref
-                          .read(projectsProvider.notifier)
-                          .deleteProject(project.id),
-                    );
-                  },
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: _gridSpacing,
+                  runSpacing: _gridSpacing,
+                  children: [
+                    for (final project in featuredProjects)
+                      SizedBox(
+                        width: cardWidth,
+                        height: _featuredCardHeight,
+                        child: ProjectCard(
+                          project: project,
+                          featured: true,
+                          tasks: tasks
+                              .where((t) => t.projectId == project.id)
+                              .toList(),
+                          onTap: () => openProject(project.id),
+                          onDelete: () => ref
+                              .read(projectsProvider.notifier)
+                              .deleteProject(project.id),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ] else if (query.isNotEmpty) ...[
@@ -278,6 +279,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: _gridPadding),
                 child: Wrap(
+                  alignment: WrapAlignment.center,
                   spacing: 10,
                   runSpacing: 10,
                   children: [

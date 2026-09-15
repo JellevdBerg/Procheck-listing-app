@@ -295,4 +295,47 @@ void main() {
     expect(find.text('Kitchen Remodel'), findsNothing);
     expect(find.text('Pick tiles'), findsNothing);
   });
+
+  testWidgets('a lone project card is centered, not stretched full width', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await createProject(tester, 'Solo Project');
+
+    final cardFinder = find.ancestor(
+      of: find.text('Solo Project'),
+      matching: find.byType(ProjectCard),
+    );
+    final cardWidth = tester.getSize(cardFinder).width;
+    final windowWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+
+    // Well short of the available width (minus the 32px of horizontal grid
+    // padding) — a full-width stretch would come within a few px of it.
+    expect(cardWidth, lessThan(windowWidth - 32 - 100));
+  });
+
+  testWidgets('Settings > Wipe All Data clears everything without restart', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await createProject(tester, 'ToWipe');
+    expect(find.text('ToWipe'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Wipe all data'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wipe everything'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ToWipe'), findsNothing);
+    expect(find.textContaining('No tasks yet'), findsOneWidget);
+  });
 }

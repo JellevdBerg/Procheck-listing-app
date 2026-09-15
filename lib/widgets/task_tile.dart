@@ -235,6 +235,7 @@ class _SubtasksSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(tasksProvider.notifier);
+    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final theme = Theme.of(context);
 
     return Column(
@@ -243,19 +244,22 @@ class _SubtasksSection extends ConsumerWidget {
         if (task.subtasks.isNotEmpty) ...[
           Text('Subtasks', style: theme.textTheme.labelLarge),
           for (final subtask in task.subtasks)
-            CheckboxListTile(
+            ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: subtask.isChecked,
+              onTap: () => notifier.toggleSubtask(task.id, subtask.id),
+              leading: WobbleCheckbox(
+                value: subtask.isChecked,
+                reduceMotion: reduceMotion,
+                onChanged: (_) => notifier.toggleSubtask(task.id, subtask.id),
+              ),
               title: Text(
                 subtask.title,
                 style: subtask.isChecked
                     ? const TextStyle(decoration: TextDecoration.lineThrough)
                     : null,
               ),
-              onChanged: (_) => notifier.toggleSubtask(task.id, subtask.id),
-              secondary: IconButton(
+              trailing: IconButton(
                 icon: const Icon(Icons.close, size: 18),
                 tooltip: 'Remove subtask',
                 onPressed: () => notifier.removeSubtask(task.id, subtask.id),

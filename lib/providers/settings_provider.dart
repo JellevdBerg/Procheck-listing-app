@@ -83,4 +83,14 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     state = state.copyWith(reduceMotion: value);
     unawaited(_box.put('reduceMotion', value));
   }
+
+  /// Resets settings to their defaults. Used by Settings > Wipe All Data.
+  void resetToDefaults() {
+    unawaited(_box.clear());
+    state = const AppSettings(
+      themeMode: ThemeMode.system,
+      accentIndex: 0,
+      reduceMotion: false,
+    );
+  }
 }

@@ -194,4 +194,10 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
     state = state.where((t) => !idsToDelete.contains(t.id)).toList();
   }
+
+  /// Wipes every task. Used by Settings > Wipe All Data.
+  void clearAll() {
+    unawaited(_box.clear());
+    state = [];
+  }
 }

@@ -90,4 +90,10 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     unawaited(_box.delete(id));
     state = state.where((p) => p.id != id).toList();
   }
+
+  /// Wipes every project. Used by Settings > Wipe All Data.
+  void clearAll() {
+    unawaited(_box.clear());
+    state = [];
+  }
 }
