@@ -46,7 +46,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return DropAwayOnPush(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('ProCheck'),
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppLogo(size: 32),
+              SizedBox(width: 12),
+              Text('ProCheck'),
+            ],
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings_outlined),
@@ -54,10 +61,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(right: 16, left: 4),
-              child: AppLogo(size: 32),
             ),
           ],
           bottom: TabBar(
