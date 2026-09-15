@@ -67,6 +67,27 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // Opens a hovering ProjectCard's actions menu (assumes the card is already
+  // hovered) and taps the entry whose leading icon is [actionIcon] —
+  // Icons.archive_outlined or Icons.delete_outline.
+  Future<void> tapProjectCardAction(
+    WidgetTester tester,
+    Finder cardFinder,
+    IconData actionIcon,
+  ) async {
+    await tester.tap(
+      find.descendant(of: cardFinder, matching: find.byIcon(Icons.more_vert)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.ancestor(
+        of: find.byIcon(actionIcon),
+        matching: find.byWidgetPredicate((w) => w is PopupMenuItem),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows empty state, then a created task appears in the list', (
     tester,
   ) async {
@@ -101,13 +122,7 @@ void main() {
     await gesture.moveTo(tester.getCenter(cardFinder));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.descendant(
-        of: cardFinder,
-        matching: find.byIcon(Icons.delete_outline),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapProjectCardAction(tester, cardFinder, Icons.delete_outline);
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
@@ -277,7 +292,7 @@ void main() {
   );
 
   testWidgets(
-    'a new project shows as a featured card, hover reveals delete, tap opens it',
+    'a new project shows as a featured card, hover reveals the actions menu, tap opens it',
     (tester) async {
       await pumpApp(tester);
 
@@ -289,11 +304,11 @@ void main() {
       );
       expect(cardFinder, findsOneWidget);
 
-      final deleteFinder = find.descendant(
+      final actionsFinder = find.descendant(
         of: cardFinder,
-        matching: find.byIcon(Icons.delete_outline),
+        matching: find.byIcon(Icons.more_vert),
       );
-      expect(deleteFinder, findsNothing);
+      expect(actionsFinder, findsNothing);
 
       final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(gesture.removePointer);
@@ -303,7 +318,7 @@ void main() {
       await gesture.moveTo(tester.getCenter(cardFinder));
       await tester.pumpAndSettle();
 
-      expect(deleteFinder, findsOneWidget);
+      expect(actionsFinder, findsOneWidget);
 
       // Tapping the card itself (not the delete button) opens the project.
       await tester.tap(find.text('Groceries'));
@@ -343,13 +358,7 @@ void main() {
     await gesture.moveTo(tester.getCenter(cardFinder));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.descendant(
-        of: cardFinder,
-        matching: find.byIcon(Icons.delete_outline),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await tapProjectCardAction(tester, cardFinder, Icons.delete_outline);
     // Confirm the "Delete project?" dialog.
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();

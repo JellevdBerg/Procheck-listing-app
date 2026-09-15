@@ -1,8 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/project.dart';
-import '../models/task.dart';
 import '../models/task_template.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
@@ -20,6 +21,13 @@ import 'project_detail_screen.dart';
 import 'settings_screen.dart';
 import 'task_template_editor_screen.dart';
 
+/// Requests the bottom-right undo button, replacing whatever it was
+/// currently offering to undo (see [_HomeScreenState._showUndo]).
+typedef ShowUndo = void Function({
+  required String label,
+  required VoidCallback onUndo,
+});
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -31,6 +39,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
+  // Only one undo offer is ever live: showing a new one (whether for another
+  // task or a project archive) replaces whatever was pending before, rather
+  // than queuing up behind it, and it silently expires on its own after a
+  // few seconds rather than sitting there indefinitely.
+  _PendingUndo? _pendingUndo;
+  Timer? _undoTimer;
+
   @override
   void initState() {
     super.initState();
@@ -40,8 +55,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   void dispose() {
+    _undoTimer?.cancel();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _showUndo({required String label, required VoidCallback onUndo}) {
+    _undoTimer?.cancel();
+    setState(() => _pendingUndo = _PendingUndo(label: label, onUndo: onUndo));
+    _undoTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _pendingUndo = null);
+    });
+  }
+
+  void _resolveUndo() {
+    _undoTimer?.cancel();
+    _pendingUndo?.onUndo();
+    setState(() => _pendingUndo = null);
   }
 
   @override
@@ -75,9 +105,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ],
           ),
         ),
-        body: TabBarView(
-          controller: _tabController,
-          children: const [_ProjectsTab(), _TemplatesTab(), _ArchivedTab()],
+        body: Stack(
+          children: [
+            TabBarView(
+              controller: _tabController,
+              children: [
+                _ProjectsTab(onShowUndo: _showUndo),
+                const _TemplatesTab(),
+                const _ArchivedTab(),
+              ],
+            ),
+            if (_pendingUndo != null)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: _UndoButton(
+                  label: _pendingUndo!.label,
+                  onPressed: _resolveUndo,
+                ),
+              ),
+          ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: switch (_tabController.index) {
@@ -148,7 +195,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 }
 
 class _ProjectsTab extends ConsumerStatefulWidget {
-  const _ProjectsTab();
+  const _ProjectsTab({required this.onShowUndo});
+
+  final ShowUndo onShowUndo;
 
   @override
   ConsumerState<_ProjectsTab> createState() => _ProjectsTabState();
@@ -274,6 +323,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                                 .toList(),
                             onTap: () => openProject(project.id),
                             onDelete: triggerRemoval,
+                            onArchive: () => _archiveProject(project),
                           ),
                         ),
                       ),
@@ -317,6 +367,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                               .toList(),
                           onTap: () => openProject(project.id),
                           onDelete: triggerRemoval,
+                          onArchive: () => _archiveProject(project),
                         ),
                       ),
                   ],
@@ -345,10 +396,15 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                     reduceMotion: reduceMotion,
                     shrinkWidth: false,
                     onRemoved: () =>
-                        _deleteUnfiledTaskWithUndo(context, ref, task),
+                        ref.read(tasksProvider.notifier).deleteTask(task.id),
                     builder: (context, triggerRemoval) => TaskTile(
                       task: task,
                       onDelete: triggerRemoval,
+                      onExplicitDelete: () => widget.onShowUndo(
+                        label: '"${task.title}" deleted',
+                        onUndo: () =>
+                            ref.read(tasksProvider.notifier).restoreTask(task),
+                      ),
                       autoRemoveWhenChecked: true,
                       reorderIndex: index,
                     ),
@@ -362,27 +418,47 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
       },
     );
   }
+
+  void _archiveProject(Project project) {
+    ref.read(projectsProvider.notifier).archiveProject(project.id);
+    widget.onShowUndo(
+      label: '"${project.name}" archived',
+      onUndo: () =>
+          ref.read(projectsProvider.notifier).unarchiveProject(project.id),
+    );
+  }
 }
 
-/// Deletes an unfiled task (whether via the trash icon or auto-removal
-/// after being checked off) but offers a few seconds to undo it — standalone
-/// tasks have no project to recover them from, so an accidental removal
-/// would otherwise be unrecoverable.
-void _deleteUnfiledTaskWithUndo(
-  BuildContext context,
-  WidgetRef ref,
-  Task task,
-) {
-  ref.read(tasksProvider.notifier).deleteTask(task.id);
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text('"${task.title}" deleted'),
-      action: SnackBarAction(
-        label: 'Undo',
-        onPressed: () => ref.read(tasksProvider.notifier).restoreTask(task),
-      ),
-    ),
-  );
+/// What's currently offered for undo — at most one at a time (see
+/// [_HomeScreenState._showUndo]).
+class _PendingUndo {
+  _PendingUndo({required this.label, required this.onUndo});
+
+  final String label;
+  final VoidCallback onUndo;
+}
+
+/// A small floating "Undo" button pinned to the bottom-right, replacing the
+/// old full-width snackbar: it doesn't queue behind earlier removals (a new
+/// one simply replaces it, via [_PendingUndo]) and expires on its own after
+/// a few seconds instead of lingering.
+class _UndoButton extends StatelessWidget {
+  const _UndoButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.extended(
+      key: const ValueKey('undo-button'),
+      heroTag: 'undo-button',
+      onPressed: onPressed,
+      tooltip: label,
+      icon: const Icon(Icons.undo),
+      label: const Text('Undo'),
+    );
+  }
 }
 
 class _TemplatesTab extends ConsumerWidget {

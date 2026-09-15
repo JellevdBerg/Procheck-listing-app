@@ -66,6 +66,8 @@ HeroFlightShuttleBuilder projectNameHeroFlightShuttleBuilder(
 /// A project tile for the home screen grid. [featured] gives the tall card
 /// with a preview of up to 4 tasks; otherwise it's a compact, name-only
 /// chip. Both reveal a delete button on hover.
+enum _ProjectCardAction { archive, remove }
+
 class ProjectCard extends StatefulWidget {
   const ProjectCard({
     super.key,
@@ -73,6 +75,7 @@ class ProjectCard extends StatefulWidget {
     required this.tasks,
     required this.onTap,
     required this.onDelete,
+    required this.onArchive,
     this.featured = false,
     this.reduceMotion = false,
   });
@@ -81,6 +84,7 @@ class ProjectCard extends StatefulWidget {
   final List<Task> tasks;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onArchive;
   final bool featured;
   final bool reduceMotion;
 
@@ -91,6 +95,17 @@ class ProjectCard extends StatefulWidget {
 class _ProjectCardState extends State<ProjectCard> {
   bool _hovering = false;
 
+  // Opening the menu's full-screen route occludes this card's MouseRegion,
+  // which fires onExit and would otherwise flip _hovering back to false —
+  // tearing the actions button (and a PopupMenuButton along with it) out of
+  // the tree mid-interaction, right as the pending selection is about to
+  // come back. Keeping the button visible for as long as its own menu is
+  // open — regardless of hover — avoids that, and using a plain showMenu()
+  // call anchored on this State (rather than PopupMenuButton's own nested
+  // State) means the pending Future is never tied to a widget that hover
+  // state could dispose out from under it.
+  bool _menuOpen = false;
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -100,7 +115,7 @@ class _ProjectCardState extends State<ProjectCard> {
     );
   }
 
-  Widget _header(BuildContext context, {required bool showDelete}) {
+  Widget _header(BuildContext context, {required bool showActions}) {
     final theme = Theme.of(context);
     return Row(
       children: [
@@ -132,15 +147,72 @@ class _ProjectCardState extends State<ProjectCard> {
             ),
           ),
         ),
-        if (showDelete)
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 20),
-            tooltip: 'Delete project',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _confirmDelete(context),
-          ),
+        if (showActions || _menuOpen) _actionsMenu(context),
       ],
     );
+  }
+
+  /// A single "more" button that rolls down a small menu on tap, rather than
+  /// separate always-visible icons per action — keeps the hover state tidy
+  /// as more actions get added.
+  Widget _actionsMenu(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.more_vert, size: 20),
+      tooltip: 'Project actions',
+      onPressed: () => _openActionsMenu(context),
+    );
+  }
+
+  Future<void> _openActionsMenu(BuildContext context) async {
+    setState(() => _menuOpen = true);
+
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomRight(Offset.zero),
+          ancestor: overlay,
+        ),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final action = await showMenu<_ProjectCardAction>(
+      context: context,
+      position: position,
+      items: const [
+        PopupMenuItem(
+          value: _ProjectCardAction.archive,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.archive_outlined),
+            title: Text('Archive'),
+          ),
+        ),
+        PopupMenuItem(
+          value: _ProjectCardAction.remove,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline),
+            title: Text('Remove'),
+          ),
+        ),
+      ],
+    );
+    if (!context.mounted) return;
+    setState(() => _menuOpen = false);
+
+    switch (action) {
+      case _ProjectCardAction.archive:
+        widget.onArchive();
+      case _ProjectCardAction.remove:
+        _confirmDelete(context);
+      case null:
+        break;
+    }
   }
 
   Widget _buildFeatured(BuildContext context) {
@@ -157,7 +229,7 @@ class _ProjectCardState extends State<ProjectCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _header(context, showDelete: _hovering),
+              _header(context, showActions: _hovering),
               const SizedBox(height: 4),
               const Divider(height: 1),
               const SizedBox(height: 8),
@@ -235,14 +307,9 @@ class _ProjectCardState extends State<ProjectCard> {
                   ),
                 ],
               ),
-              if (_hovering) ...[
+              if (_hovering || _menuOpen) ...[
                 const SizedBox(width: 2),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  tooltip: 'Delete project',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _confirmDelete(context),
-                ),
+                _actionsMenu(context),
               ] else
                 const SizedBox(width: 8),
             ],
