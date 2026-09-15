@@ -86,3 +86,38 @@ Assumptions:
   actions bound to the same combo.
 
 ---
+
+## Task 5: Add note/file functionality in Templates window
+Status: **done**
+Files changed: `lib/models/task_template.dart`, `lib/models/task_template.g.dart`,
+`lib/providers/task_templates_provider.dart`, `lib/providers/tasks_provider.dart`,
+`lib/screens/task_template_editor_screen.dart`, `lib/widgets/task_tile.dart`,
+`lib/widgets/attachments_editor.dart` (new), `lib/widgets/notes_field.dart` (new),
+`test/task_templates_provider_test.dart` (new)
+Notes: Extracted `TaskTile`'s previously-private `_NotesField` and
+`_AttachmentsSection`/`_AttachmentChip` into shared, provider-agnostic
+`NotesField`/`AttachmentsEditor`/`AttachmentChip` widgets (they take a plain
+`List<Attachment>` + `onAdd`/`onRemoveAt` callbacks instead of reaching into
+`tasksProvider` directly), so the template editor uses the exact same
+UI/file-picker flow instead of a re-implementation. `TaskTemplate` gained
+`notes` (String?, HiveField 4) and `attachments` (List<Attachment>, HiveField
+5) — ran `build_runner` to regenerate its adapter. The editor screen holds
+both as local state (same pattern as its existing `_subtasks` list) until
+Save, then passes them to `addTemplate`/`updateTemplate`.
+`TasksNotifier.addFromTemplate` now copies `template.notes` and fresh
+`Attachment` copies of `template.attachments` onto every task created from
+it (a `HiveObject` shouldn't be shared between the template and every task
+instantiated from it, so attachments are cloned, not reused by reference).
+Added a provider-level test creating a template with a note + attachment,
+instantiating a task from it, and asserting both carried over (and that the
+attachment is a distinct copy).
+Assumptions:
+- Notes/attachments in the editor are staged locally and only actually
+  persisted on Save, matching how the screen already treats subtasks —
+  there's no separate "add attachment to this not-yet-saved template"
+  provider call.
+- Didn't attempt a visual/E2E capture of the file-picker dialog itself
+  (native OS dialog, not capturable headlessly) — see PR notes on manual
+  testing still needed.
+
+---
