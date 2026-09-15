@@ -121,3 +121,32 @@ Assumptions:
   testing still needed.
 
 ---
+
+## Task 6: Workspace CRUD via right-click + default "Personal" workspace
+Status: **done**
+Files changed: `lib/providers/settings_provider.dart`,
+`lib/widgets/sidebar/app_sidebar.dart`, `test/settings_provider_test.dart`
+Notes: Replaced the hardcoded `const _workspaceNames = ['Personal', 'Acme
+Co.', 'Side projects']` demo list with a real, persisted
+`AppSettings.workspaceNames` (`List<String>`), defaulting to `['Personal']`
+on a fresh install — this is the actual seeding requirement, not just a
+starting index into a fixed list. Added `SettingsNotifier.addWorkspace`/
+`renameWorkspace`/`removeWorkspace`; `removeWorkspace` refuses to drop the
+last remaining name (returns `false` instead of mutating state) so the
+sidebar can show an error snackbar rather than silently no-op. Right-
+clicking the sidebar's workspace row opens an Add/Edit/Remove context menu
+(same `showMenu`-at-tap-point pattern as Task 1's favorites menu); Add/Edit
+reuse the existing `showTextPromptDialog`. Left-click still cycles through
+the list exactly as before. Workspace names round-trip through backup
+export/import.
+Assumptions:
+- No confirmation dialog on Remove — unlike deleting a project (which
+  cascades to delete real tasks/subtasks), a workspace here is still just a
+  label with no data of its own to lose (per the design doc, ProCheck has
+  no real multi-workspace data model), so it's treated like the low-stakes
+  toggle actions (favorite/unfavorite) rather than a destructive one.
+- Edit/Remove always act on the *currently displayed* workspace, since the
+  switcher shows one name at a time (not a list of rows) — there's nothing
+  else to disambiguate a right-click against.
+
+---
