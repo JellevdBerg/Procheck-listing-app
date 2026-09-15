@@ -9,9 +9,8 @@ import '../../providers/tasks_provider.dart';
 import '../../screens/app_screen.dart';
 import '../../theme/nocturne_theme.dart';
 import '../app_logo.dart';
+import '../text_prompt_dialog.dart';
 import 'mini_calendar.dart';
-
-const _workspaceNames = ['Personal', 'Acme Co.', 'Side projects'];
 
 /// The persistent left navigation column: workspace switcher, smart views
 /// (Today/Upcoming), Favorites, the Projects/Templates/Archived library,
@@ -81,8 +80,7 @@ class AppSidebar extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _NavRow(
               icon: Icons.business,
-              label: _workspaceNames[settings.workspaceIndex %
-                  _workspaceNames.length],
+              label: settings.currentWorkspaceName,
               expanded: expanded,
               background: tokens.neutral800,
               trailing: expanded
@@ -92,9 +90,13 @@ class AppSidebar extends ConsumerWidget {
                       color: tokens.neutral400,
                     )
                   : null,
-              onTap: () => ref
-                  .read(settingsProvider.notifier)
-                  .cycleWorkspace(_workspaceNames.length),
+              onTap: () => ref.read(settingsProvider.notifier).cycleWorkspace(),
+              onSecondaryTapDown: (details) => _showWorkspaceContextMenu(
+                context,
+                ref,
+                settings.workspaceIndex,
+                details.globalPosition,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -234,6 +236,79 @@ class AppSidebar extends ConsumerWidget {
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
+  static Future<void> _showWorkspaceContextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    int workspaceIndex,
+    Offset globalPosition,
+  ) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      globalPosition & const Size(1, 1),
+      Offset.zero & overlay.size,
+    );
+    final selected = await showMenu<_WorkspaceAction>(
+      context: context,
+      position: position,
+      items: const [
+        PopupMenuItem(
+          value: _WorkspaceAction.add,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.add_business_outlined),
+            title: Text('Add workspace'),
+          ),
+        ),
+        PopupMenuItem(
+          value: _WorkspaceAction.edit,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.edit_outlined),
+            title: Text('Edit workspace'),
+          ),
+        ),
+        PopupMenuItem(
+          value: _WorkspaceAction.remove,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline),
+            title: Text('Remove workspace'),
+          ),
+        ),
+      ],
+    );
+    if (!context.mounted || selected == null) return;
+
+    final notifier = ref.read(settingsProvider.notifier);
+    switch (selected) {
+      case _WorkspaceAction.add:
+        final name = await showTextPromptDialog(
+          context,
+          title: 'Add workspace',
+          confirmLabel: 'Add',
+        );
+        if (name != null) notifier.addWorkspace(name);
+      case _WorkspaceAction.edit:
+        final currentName = ref.read(settingsProvider).currentWorkspaceName;
+        final name = await showTextPromptDialog(
+          context,
+          title: 'Edit workspace',
+          initialValue: currentName,
+        );
+        if (name != null) notifier.renameWorkspace(workspaceIndex, name);
+      case _WorkspaceAction.remove:
+        final removed = notifier.removeWorkspace(workspaceIndex);
+        if (!removed && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Can't remove the only workspace."),
+            ),
+          );
+        }
+    }
+  }
+
   static Future<void> _showFavoriteContextMenu(
     BuildContext context,
     WidgetRef ref,
@@ -267,6 +342,8 @@ class AppSidebar extends ConsumerWidget {
 }
 
 enum _FavoriteAction { unfavorite }
+
+enum _WorkspaceAction { add, edit, remove }
 
 class _Header extends StatelessWidget {
   const _Header({required this.expanded, required this.onToggle});

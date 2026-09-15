@@ -69,6 +69,7 @@ class AppSettings {
     this.workspaceIndex = 0,
     this.lastViewedScreenIndex = 0,
     this.shortcutOverrides = const {},
+    this.workspaceNames = const ['Personal'],
   });
 
   final ThemeMode themeMode;
@@ -86,10 +87,19 @@ class AppSettings {
   /// Persisted so the sidebar stays collapsed/expanded across restarts.
   final bool sidebarExpanded;
 
-  /// Cosmetic only — see the design handoff's workspace switcher, which is
-  /// demo-only cycling with no effect on data (ProCheck has no real
-  /// multi-workspace data model).
+  /// Which of [workspaceNames] is active. Cosmetic — see the design
+  /// handoff's workspace switcher; ProCheck has no real multi-workspace
+  /// data model, so switching workspaces doesn't partition projects/tasks.
   final int workspaceIndex;
+
+  /// User-managed list of workspace names (Add/Edit/Remove via the
+  /// sidebar's workspace row context menu). A fresh install seeds exactly
+  /// one, "Personal" — always at least one, since [removeWorkspace] refuses
+  /// to drop the last remaining name.
+  final List<String> workspaceNames;
+
+  String get currentWorkspaceName =>
+      workspaceNames[workspaceIndex.clamp(0, workspaceNames.length - 1)];
 
   /// [AppScreen.index] of whichever screen was showing when the app last
   /// closed — used when [defaultLanding] is [LandingScreenOption.lastViewed].
@@ -120,6 +130,7 @@ class AppSettings {
     int? workspaceIndex,
     int? lastViewedScreenIndex,
     Map<ShortcutAction, ShortcutBinding>? shortcutOverrides,
+    List<String>? workspaceNames,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -136,6 +147,7 @@ class AppSettings {
       lastViewedScreenIndex:
           lastViewedScreenIndex ?? this.lastViewedScreenIndex,
       shortcutOverrides: shortcutOverrides ?? this.shortcutOverrides,
+      workspaceNames: workspaceNames ?? this.workspaceNames,
     );
   }
 
@@ -193,6 +205,7 @@ class AppSettings {
     'workspaceIndex': workspaceIndex,
     'lastViewedScreenIndex': lastViewedScreenIndex,
     'shortcutOverrides': _shortcutOverridesToJson(shortcutOverrides),
+    'workspaceNames': workspaceNames,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -214,9 +227,20 @@ class AppSettings {
       shortcutOverrides: _shortcutOverridesFromJson(
         json['shortcutOverrides'] as Map<dynamic, dynamic>?,
       ),
+      workspaceNames: _nonEmptyWorkspaceNames(
+        (json['workspaceNames'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+      ),
     );
   }
 }
+
+/// Never lets the app end up with zero workspace names, however a backup
+/// happened to be shaped — same guarantee [SettingsNotifier.removeWorkspace]
+/// enforces during normal use.
+List<String> _nonEmptyWorkspaceNames(List<String>? names) =>
+    (names == null || names.isEmpty) ? const ['Personal'] : names;
 
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
   ref,
@@ -253,6 +277,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       lastViewedScreenIndex:
           _box.get('lastViewedScreenIndex', defaultValue: 0) as int,
       shortcutOverrides: _loadShortcutOverrides(),
+      workspaceNames: _nonEmptyWorkspaceNames(
+        (_box.get('workspaceNames') as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+      ),
     );
   }
 
@@ -320,11 +349,47 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('sidebarExpanded', expanded));
   }
 
-  /// Cycles the cosmetic workspace switcher — see [AppSettings.workspaceIndex].
-  void cycleWorkspace(int workspaceCount) {
-    final next = (state.workspaceIndex + 1) % workspaceCount;
+  /// Cycles to the next workspace — see [AppSettings.workspaceIndex].
+  void cycleWorkspace() {
+    final next = (state.workspaceIndex + 1) % state.workspaceNames.length;
     state = state.copyWith(workspaceIndex: next);
     unawaited(_box.put('workspaceIndex', next));
+  }
+
+  void _saveWorkspaces(List<String> names, int index) {
+    state = state.copyWith(workspaceNames: names, workspaceIndex: index);
+    unawaited(_box.put('workspaceNames', names));
+    unawaited(_box.put('workspaceIndex', index));
+  }
+
+  /// Adds a new workspace named [name] and switches to it.
+  void addWorkspace(String name) {
+    final names = [...state.workspaceNames, name];
+    _saveWorkspaces(names, names.length - 1);
+  }
+
+  /// Renames the workspace at [index].
+  void renameWorkspace(int index, String name) {
+    if (index < 0 || index >= state.workspaceNames.length) return;
+    final names = [...state.workspaceNames];
+    names[index] = name;
+    _saveWorkspaces(names, state.workspaceIndex);
+  }
+
+  /// Removes the workspace at [index]. Refuses to drop the last remaining
+  /// one — returns false when that guard blocked the removal, true once it
+  /// actually happened, so the caller can surface a message either way.
+  bool removeWorkspace(int index) {
+    if (state.workspaceNames.length <= 1) return false;
+    if (index < 0 || index >= state.workspaceNames.length) return false;
+    final names = [...state.workspaceNames]..removeAt(index);
+    final newIndex = state.workspaceIndex >= names.length
+        ? names.length - 1
+        : (state.workspaceIndex > index
+              ? state.workspaceIndex - 1
+              : state.workspaceIndex);
+    _saveWorkspaces(names, newIndex);
+    return true;
   }
 
   /// Rebinds [action] to [binding]. Callers are expected to have already
@@ -388,6 +453,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     unawaited(_box.put('defaultLanding', settings.defaultLanding.index));
     unawaited(_box.put('sidebarExpanded', settings.sidebarExpanded));
     unawaited(_box.put('workspaceIndex', settings.workspaceIndex));
+    unawaited(_box.put('workspaceNames', settings.workspaceNames));
     unawaited(
       _box.put('lastViewedScreenIndex', settings.lastViewedScreenIndex),
     );
