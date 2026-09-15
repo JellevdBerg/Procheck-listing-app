@@ -7,3 +7,18 @@ Working through the 8-item overnight task list. Each task is committed
 separately. Entries appended below as each task finishes.
 
 ---
+
+## Task 1: Unfavorite via right-click
+Status: **done**
+Files changed: `lib/widgets/sidebar/app_sidebar.dart`
+Notes: Added `onSecondaryTapDown` to `_NavRow` (wrapped in a `GestureDetector`)
+and wired it on Favorites rows to a `showMenu` context menu (same manual
+`showMenu`-positioned-by-tap-point pattern used elsewhere), with a single
+"Unfavorite" item that calls the existing `projectsProvider.toggleFavorite`.
+No confirmation dialog, per spec. Riverpod rebuild removes the row from the
+list immediately — no reload needed.
+Assumptions: "right-click" = Flutter's `onSecondaryTapDown` (desktop mouse
+right-click / trackpad secondary click), which is what this native app target
+actually receives — there's no separate touch/right-click ambiguity here.
+
+---
