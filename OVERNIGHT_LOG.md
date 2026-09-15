@@ -175,3 +175,25 @@ Assumptions: none — root cause was fully identified and the fix directly
 addresses it (not a workaround).
 
 ---
+
+## Task 8: Version bump to v1.2.1
+Status: **done**
+Files changed: `pubspec.yaml`
+Notes: Searched the repo for the current version string (`1.2.0`) and for
+any other place a version might be declared (this is a Flutter app, not a
+Node project, so there's no `package.json`; checked `web/manifest.json`,
+`web/index.html`, and `windows/runner/Runner.rc` too). `pubspec.yaml`'s
+`version:` field is the only hardcoded declaration — the app has no
+in-app "About" screen or `PackageInfo` usage displaying it anywhere, and
+`Runner.rc`'s `FILEVERSION`/`PRODUCTVERSION` pull from
+`FLUTTER_VERSION_MAJOR/MINOR/PATCH/BUILD` CMake defines that Flutter's own
+build tooling derives from `pubspec.yaml` automatically, so nothing there
+needs a manual edit. Bumped `version: 1.2.0+1` → `1.2.1+1`. Verified the
+app still builds: reran the Hive codegen step CI uses
+(`dart run build_runner build`) and a full `flutter build web --release`,
+both succeeded, plus a clean `flutter analyze` and full `flutter test`.
+Assumptions: kept the `+1` build number as-is (matching how every prior
+version bump in this repo's history has only incremented the semver part
+for a same-day release), since nothing in the task said to bump it too.
+
+---
