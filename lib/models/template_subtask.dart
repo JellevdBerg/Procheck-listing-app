@@ -11,4 +11,9 @@ class TemplateSubtask extends HiveObject {
 
   @HiveField(1)
   String title;
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title};
+
+  factory TemplateSubtask.fromJson(Map<String, dynamic> json) =>
+      TemplateSubtask(id: json['id'] as String, title: json['title'] as String);
 }

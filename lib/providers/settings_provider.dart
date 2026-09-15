@@ -43,6 +43,22 @@ class AppSettings {
       reduceMotion: reduceMotion ?? this.reduceMotion,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'themeMode': themeMode.index,
+    'accentIndex': accentIndex,
+    'reduceMotion': reduceMotion,
+  };
+
+  factory AppSettings.fromJson(Map<String, dynamic> json) {
+    final accentIndex = json['accentIndex'] as int? ?? 0;
+    return AppSettings(
+      themeMode: ThemeMode
+          .values[(json['themeMode'] as int?) ?? ThemeMode.system.index],
+      accentIndex: accentIndex.clamp(0, accentPalette.length - 1),
+      reduceMotion: json['reduceMotion'] as bool? ?? false,
+    );
+  }
 }
 
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
@@ -92,5 +108,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       accentIndex: 0,
       reduceMotion: false,
     );
+  }
+
+  /// Replaces all settings at once. Used when restoring from a backup.
+  void restoreAll(AppSettings settings) {
+    unawaited(_box.put('themeMode', settings.themeMode.index));
+    unawaited(_box.put('accentIndex', settings.accentIndex));
+    unawaited(_box.put('reduceMotion', settings.reduceMotion));
+    state = settings;
   }
 }

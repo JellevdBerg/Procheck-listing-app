@@ -31,4 +31,22 @@ class Project extends HiveObject {
   /// the missing field straight to `int` and crashes on startup.
   @HiveField(4, defaultValue: 0)
   int colorIndex;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'createdAt': createdAt.toIso8601String(),
+    'lastOpenedAt': lastOpenedAt?.toIso8601String(),
+    'colorIndex': colorIndex,
+  };
+
+  factory Project.fromJson(Map<String, dynamic> json) => Project(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    lastOpenedAt: json['lastOpenedAt'] == null
+        ? null
+        : DateTime.parse(json['lastOpenedAt'] as String),
+    colorIndex: json['colorIndex'] as int? ?? 0,
+  );
 }

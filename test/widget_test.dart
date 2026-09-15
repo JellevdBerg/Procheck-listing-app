@@ -389,6 +389,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
+    // The Backup & restore section pushed this further down the list.
+    await tester.scrollUntilVisible(
+      find.text('Wipe all data'),
+      200,
+      scrollable: find.byType(Scrollable),
+    );
     await tester.tap(find.text('Wipe all data'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Wipe everything'));

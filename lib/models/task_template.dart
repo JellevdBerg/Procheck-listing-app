@@ -26,4 +26,20 @@ class TaskTemplate extends HiveObject {
 
   @HiveField(3)
   DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'subtasks': subtasks.map((s) => s.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory TaskTemplate.fromJson(Map<String, dynamic> json) => TaskTemplate(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    subtasks: (json['subtasks'] as List<dynamic>? ?? [])
+        .map((s) => TemplateSubtask.fromJson(s as Map<String, dynamic>))
+        .toList(),
+    createdAt: DateTime.parse(json['createdAt'] as String),
+  );
 }

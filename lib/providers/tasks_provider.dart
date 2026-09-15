@@ -189,4 +189,13 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     unawaited(_box.clear());
     state = [];
   }
+
+  /// Replaces every task with [tasks]. Used when restoring from a backup —
+  /// anything currently stored is discarded first.
+  void restoreAll(List<Task> tasks) {
+    unawaited(_box.clear());
+    unawaited(_box.putAll({for (final t in tasks) t.id: t}));
+    state = tasks;
+    _sortState();
+  }
 }
