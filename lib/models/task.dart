@@ -15,6 +15,7 @@ class Task extends HiveObject {
     List<Subtask>? subtasks,
     this.projectId,
     this.templateId,
+    this.dueDate,
   }) : subtasks = subtasks ?? [];
 
   @HiveField(0)
@@ -43,6 +44,12 @@ class Task extends HiveObject {
   @HiveField(7)
   String? templateId;
 
+  /// When set, a local notification is scheduled for this moment (see
+  /// NotificationService) — cancelled/rescheduled whenever this changes,
+  /// and cancelled outright once the task is checked off or deleted.
+  @HiveField(8)
+  DateTime? dueDate;
+
   bool get hasSubtasks => subtasks.isNotEmpty;
 
   int get completedSubtaskCount =>
@@ -50,4 +57,32 @@ class Task extends HiveObject {
 
   double get subtaskProgress =>
       subtasks.isEmpty ? 0 : completedSubtaskCount / subtasks.length;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'isChecked': isChecked,
+    'notes': notes,
+    'subtasks': subtasks.map((s) => s.toJson()).toList(),
+    'projectId': projectId,
+    'createdAt': createdAt.toIso8601String(),
+    'templateId': templateId,
+    'dueDate': dueDate?.toIso8601String(),
+  };
+
+  factory Task.fromJson(Map<String, dynamic> json) => Task(
+    id: json['id'] as String,
+    title: json['title'] as String,
+    isChecked: json['isChecked'] as bool? ?? false,
+    notes: json['notes'] as String?,
+    subtasks: (json['subtasks'] as List<dynamic>? ?? [])
+        .map((s) => Subtask.fromJson(s as Map<String, dynamic>))
+        .toList(),
+    projectId: json['projectId'] as String?,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    templateId: json['templateId'] as String?,
+    dueDate: json['dueDate'] == null
+        ? null
+        : DateTime.parse(json['dueDate'] as String),
+  );
 }

@@ -1,6 +1,13 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/backup_service.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
@@ -68,6 +75,24 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: notifier.setReduceMotion,
           ),
           const Divider(),
+          const _SectionLabel('Backup & restore'),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('Export backup'),
+            subtitle: const Text(
+              'Saves every project, task, and template to a JSON file',
+            ),
+            onTap: () => _exportBackup(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Import backup'),
+            subtitle: const Text(
+              'Replaces everything currently in ProCheck with a backup file',
+            ),
+            onTap: () => _importBackup(context, ref),
+          ),
+          const Divider(),
           const _SectionLabel('Danger zone'),
           ListTile(
             leading: Icon(
@@ -84,6 +109,110 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _confirmWipe(context, ref),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
+    final json = buildBackupJson(
+      projects: ref.read(projectsProvider),
+      tasks: ref.read(tasksProvider),
+      taskTemplates: ref.read(taskTemplatesProvider),
+      settings: ref.read(settingsProvider),
+    );
+    final bytes = Uint8List.fromList(
+      utf8.encode(const JsonEncoder.withIndent('  ').convert(json)),
+    );
+    final fileName = suggestedBackupFileName();
+
+    final savedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Export ProCheck backup',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      // Only actually used by file_picker on web (it triggers the browser
+      // download); desktop/mobile just returns a path and the bytes below
+      // are written by hand instead.
+      bytes: bytes,
+    );
+    if (savedPath == null) return; // user cancelled
+
+    if (!kIsWeb) {
+      await File(savedPath).writeAsBytes(bytes);
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            kIsWeb ? 'Backup downloaded.' : 'Backup saved to $savedPath',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _importBackup(BuildContext context, WidgetRef ref) async {
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Import ProCheck backup',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final bytes = result.files.single.bytes;
+    if (bytes == null) {
+      if (context.mounted) {
+        _showImportError(context, "Couldn't read that file.");
+      }
+      return;
+    }
+
+    final BackupData data;
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      data = parseBackupJson(decoded);
+    } catch (e) {
+      if (context.mounted) {
+        _showImportError(
+          context,
+          e is BackupFormatException
+              ? e.message
+              : "This file isn't a valid ProCheck backup.",
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Import backup?',
+      message:
+          'This replaces everything currently in ProCheck with the backup: '
+          '${data.projects.length} project(s), ${data.tasks.length} task(s), '
+          'and ${data.taskTemplates.length} template(s). This cannot be undone.',
+      confirmLabel: 'Import',
+    );
+    if (!confirmed) return;
+
+    ref.read(projectsProvider.notifier).restoreAll(data.projects);
+    ref.read(tasksProvider.notifier).restoreAll(data.tasks);
+    ref.read(taskTemplatesProvider.notifier).restoreAll(data.taskTemplates);
+    ref.read(settingsProvider.notifier).restoreAll(data.settings);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Backup imported.')));
+    }
+  }
+
+  void _showImportError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.error,
       ),
     );
   }

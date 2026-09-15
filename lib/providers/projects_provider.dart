@@ -96,4 +96,13 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     unawaited(_box.clear());
     state = [];
   }
+
+  /// Replaces every project with [projects]. Used when restoring from a
+  /// backup — anything currently stored is discarded first.
+  void restoreAll(List<Project> projects) {
+    unawaited(_box.clear());
+    unawaited(_box.putAll({for (final p in projects) p.id: p}));
+    state = projects;
+    _sortState();
+  }
 }

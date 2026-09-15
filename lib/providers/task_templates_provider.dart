@@ -68,4 +68,13 @@ class TaskTemplatesNotifier extends StateNotifier<List<TaskTemplate>> {
     unawaited(_box.clear());
     state = [];
   }
+
+  /// Replaces every template with [templates]. Used when restoring from a
+  /// backup — anything currently stored is discarded first.
+  void restoreAll(List<TaskTemplate> templates) {
+    unawaited(_box.clear());
+    unawaited(_box.putAll({for (final t in templates) t.id: t}));
+    state = templates;
+    _sortState();
+  }
 }

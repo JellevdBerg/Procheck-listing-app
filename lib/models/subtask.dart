@@ -14,4 +14,16 @@ class Subtask extends HiveObject {
 
   @HiveField(2)
   bool isChecked;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'isChecked': isChecked,
+  };
+
+  factory Subtask.fromJson(Map<String, dynamic> json) => Subtask(
+    id: json['id'] as String,
+    title: json['title'] as String,
+    isChecked: json['isChecked'] as bool? ?? false,
+  );
 }

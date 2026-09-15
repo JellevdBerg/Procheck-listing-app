@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/hive_setup.dart';
+import 'data/notification_service.dart';
 import 'providers/settings_provider.dart';
 import 'screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await setUpHive();
+  await NotificationService.instance.initialize();
   runApp(const ProviderScope(child: ProcheckApp()));
 }
 
