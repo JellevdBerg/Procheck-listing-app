@@ -197,3 +197,56 @@ version bump in this repo's history has only incremented the semver part
 for a same-day release), since nothing in the task said to bump it too.
 
 ---
+
+## Final summary
+
+All 8 tasks: **done**, none blocked or partial.
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Unfavorite via right-click | ✅ done |
+| 2 | Remove wiggle from task shrink animation | ✅ done |
+| 3 | Fix layout shift from triple-dot hover button | ✅ done |
+| 4 | Rebindable Ctrl+P / Ctrl+T + Settings section | ✅ done |
+| 5 | Notes/files in Templates | ✅ done |
+| 6 | Workspace CRUD + default "Personal" workspace | ✅ done |
+| 7 | Fix add-project/add-task button anchoring on resize | ✅ done |
+| 8 | Version bump to v1.2.1 | ✅ done |
+
+**Verification performed:**
+- `flutter analyze` — clean after every task and at the end
+- `flutter test` (full suite: widget + provider tests) — green after every
+  task and at the end; added new provider/widget tests for tasks 4, 5, 6,
+  and 7 (rebinding + duplicate detection, template→task notes/attachments
+  carry-over, workspace CRUD + the zero-workspace guard, and a resize
+  regression test for the button-anchoring fix)
+- Reproduced the exact CI codegen step (`dart run build_runner build`) and
+  a full `flutter build web --release` after the version bump — both
+  succeeded
+- Visual verification via a headless Chromium build of the web target for
+  every user-facing change: hover-menu layout stability, the project card's
+  action menu, the workspace Add/Edit/Remove context menu, the sidebar's
+  Unfavorite context menu, and the new Settings > Keyboard shortcuts card
+  (screenshots captured, not included in this log — see the PR description)
+
+**Notable deviations/assumptions** (see each task's own section above for
+detail): unfavorite/workspace-remove skip a confirmation dialog (treated as
+low-stakes, non-destructive toggles, consistent with how favorite/unfavorite
+already worked); "Ctrl" and "Cmd" are modeled as one unified `cmdOrCtrl` flag
+rather than independently bindable modifiers; template notes/attachments are
+staged as local editor state and only persisted on Save, matching the
+screen's existing subtasks pattern; task 3's fix was scoped to `ProjectCard`
+specifically (the "project pane" named in the spec) rather than also
+touching `TemplatesScreen`'s similar-looking hover menu.
+
+**Manual testing still recommended before merge:**
+- The native OS file-picker dialog for template attachments (task 5) —
+  not capturable/testable headlessly
+- Real keyboard-shortcut recording (task 4) on an actual desktop build —
+  the automated tests exercise the underlying binding/persistence logic,
+  not a physical key-press through the recorder dialog's `KeyboardListener`
+- General click-through of all the new context menus (right-click
+  favorites/workspace) on a real desktop mouse, since the automated
+  coverage exercises the callback wiring more than actual OS-level
+  secondary-click behavior
+
