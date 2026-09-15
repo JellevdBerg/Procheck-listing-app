@@ -148,6 +148,13 @@ class AppSidebar extends ConsumerWidget {
                               expanded: expanded,
                               iconColor: accentPalette[project.colorIndex],
                               onTap: () => onFavoriteProjectTap(project),
+                              onSecondaryTapDown: (details) =>
+                                  _showFavoriteContextMenu(
+                                    context,
+                                    ref,
+                                    project,
+                                    details.globalPosition,
+                                  ),
                             ),
                         ],
                       ),
@@ -226,7 +233,40 @@ class AppSidebar extends ConsumerWidget {
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static Future<void> _showFavoriteContextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Project project,
+    Offset globalPosition,
+  ) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      globalPosition & const Size(1, 1),
+      Offset.zero & overlay.size,
+    );
+    final selected = await showMenu<_FavoriteAction>(
+      context: context,
+      position: position,
+      items: const [
+        PopupMenuItem(
+          value: _FavoriteAction.unfavorite,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.star_border),
+            title: Text('Unfavorite'),
+          ),
+        ),
+      ],
+    );
+    if (selected == _FavoriteAction.unfavorite) {
+      ref.read(projectsProvider.notifier).toggleFavorite(project.id);
+    }
+  }
 }
+
+enum _FavoriteAction { unfavorite }
 
 class _Header extends StatelessWidget {
   const _Header({required this.expanded, required this.onToggle});
@@ -315,6 +355,7 @@ class _NavRow extends StatelessWidget {
     this.background,
     this.trailing,
     required this.onTap,
+    this.onSecondaryTapDown,
   });
 
   final IconData icon;
@@ -327,6 +368,7 @@ class _NavRow extends StatelessWidget {
   final Color? background;
   final Widget? trailing;
   final VoidCallback onTap;
+  final void Function(TapDownDetails details)? onSecondaryTapDown;
 
   @override
   Widget build(BuildContext context) {
@@ -335,50 +377,58 @@ class _NavRow extends StatelessWidget {
         ? Color.alphaBlend(accent!.withValues(alpha: 0.22), tokens.neutral900)
         : background;
 
-    return Material(
-      color: activeBg ?? Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
+    return GestureDetector(
+      onSecondaryTapDown: onSecondaryTapDown,
+      child: Material(
+        color: activeBg ?? Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        child: Container(
-          decoration: active && accent != null
-              ? BoxDecoration(
-                  border: Border(left: BorderSide(color: accent!, width: 2)),
-                  borderRadius: BorderRadius.circular(8),
-                )
-              : null,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-          child: Row(
-            mainAxisAlignment: expanded
-                ? MainAxisAlignment.start
-                : MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 17,
-                color: iconColor ?? (active ? accent : tokens.neutral300),
-              ),
-              if (expanded) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, color: tokens.neutral200),
-                  ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: active && accent != null
+                ? BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: accent!, width: 2),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  )
+                : null,
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
+            child: Row(
+              mainAxisAlignment: expanded
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 17,
+                  color: iconColor ?? (active ? accent : tokens.neutral300),
                 ),
-                if (count != null && count! > 0)
-                  Text(
-                    '$count',
-                    style: TextStyle(fontSize: 12, color: tokens.neutral400),
+                if (expanded) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: tokens.neutral200,
+                      ),
+                    ),
                   ),
-                if (trailing != null) ...[
-                  const SizedBox(width: 4),
-                  trailing!,
+                  if (count != null && count! > 0)
+                    Text(
+                      '$count',
+                      style: TextStyle(fontSize: 12, color: tokens.neutral400),
+                    ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 4),
+                    trailing!,
+                  ],
                 ],
               ],
-            ],
+            ),
           ),
         ),
       ),
