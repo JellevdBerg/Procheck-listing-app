@@ -133,6 +133,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
         task.notes!.trim(),
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
+      if (task.dueDate != null) 'Due ${formatDueDate(task.dueDate!)}',
     ];
 
     return Column(
@@ -197,6 +198,28 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   }
 }
 
+/// A short, locale-agnostic rendering of a due date, e.g. "Sep 20, 2:30 PM".
+String formatDueDate(DateTime dueDate) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final hour12 = dueDate.hour % 12 == 0 ? 12 : dueDate.hour % 12;
+  final minute = dueDate.minute.toString().padLeft(2, '0');
+  final period = dueDate.hour < 12 ? 'AM' : 'PM';
+  return '${months[dueDate.month - 1]} ${dueDate.day}, $hour12:$minute $period';
+}
+
 /// The expanded region of a [TaskTile]: subtasks below the task, with a
 /// notes panel that sits to the right when there's room for it and stacks
 /// underneath otherwise.
@@ -233,23 +256,115 @@ class _ExpandedTaskDetail extends ConsumerWidget {
             focusNode: notesFocusNode,
           );
 
+          final dueDateRow = Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _DueDateRow(task: task),
+          );
+
           if (constraints.maxWidth >= breakpoint) {
-            return Row(
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 3, child: subtasks),
-                const SizedBox(width: 16),
-                Expanded(flex: 2, child: notes),
+                dueDateRow,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: subtasks),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 2, child: notes),
+                  ],
+                ),
               ],
             );
           }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [notes, const SizedBox(height: 12), subtasks],
+            children: [dueDateRow, notes, const SizedBox(height: 12), subtasks],
           );
         },
       ),
     );
+  }
+}
+
+class _DueDateRow extends ConsumerWidget {
+  const _DueDateRow({required this.task});
+
+  final Task task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final dueDate = task.dueDate;
+    final isOverdue =
+        dueDate != null && !task.isChecked && dueDate.isBefore(DateTime.now());
+
+    return Row(
+      children: [
+        Icon(
+          Icons.alarm_outlined,
+          size: 18,
+          color: isOverdue ? theme.colorScheme.error : theme.hintColor,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: dueDate == null
+              ? TextButton(
+                  onPressed: () => _pickDueDate(context, ref),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                  ),
+                  child: const Text('Set due date'),
+                )
+              : InkWell(
+                  onTap: () => _pickDueDate(context, ref),
+                  child: Text(
+                    'Due ${formatDueDate(dueDate)}',
+                    style: TextStyle(
+                      color: isOverdue ? theme.colorScheme.error : null,
+                      fontWeight: isOverdue ? FontWeight.w600 : null,
+                    ),
+                  ),
+                ),
+        ),
+        if (dueDate != null)
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Remove due date',
+            visualDensity: VisualDensity.compact,
+            onPressed: () =>
+                ref.read(tasksProvider.notifier).setTaskDueDate(task.id, null),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
+    final now = DateTime.now();
+    final initial = task.dueDate ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(now) ? now : initial,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
+    );
+    if (date == null || !context.mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null) return;
+
+    final dueDate = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
   }
 }
 

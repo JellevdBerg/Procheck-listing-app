@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
+import '../data/notification_service.dart';
 import '../models/subtask.dart';
 import '../models/task.dart';
 import '../models/task_template.dart';
@@ -98,6 +99,10 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   }
 
   void deleteTask(String taskId) {
+    final task = _box.get(taskId);
+    if (task != null) {
+      unawaited(NotificationService.instance.cancelForTask(task));
+    }
     unawaited(_box.delete(taskId));
     state = state.where((t) => t.id != taskId).toList();
   }
@@ -114,6 +119,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       subtask.isChecked = newValue;
     }
     _persist(task);
+    _syncNotificationForCompletionChange(task);
   }
 
   void toggleSubtask(String taskId, String subtaskId) {
@@ -127,6 +133,19 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
     task.isChecked = task.subtasks.every((s) => s.isChecked);
     _persist(task);
+    _syncNotificationForCompletionChange(task);
+  }
+
+  /// A completed task has nothing left to remind about, so its due-date
+  /// notification (if any) is cancelled; un-completing it (still possible
+  /// via [toggleTask]/[toggleSubtask]) puts it back if the due date hasn't
+  /// passed yet.
+  void _syncNotificationForCompletionChange(Task task) {
+    if (task.isChecked) {
+      unawaited(NotificationService.instance.cancelForTask(task));
+    } else if (task.dueDate != null) {
+      unawaited(NotificationService.instance.scheduleForTask(task));
+    }
   }
 
   void setTaskNotes(String taskId, String? notes) {
@@ -134,6 +153,14 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     if (task == null) return;
     task.notes = notes;
     _persist(task);
+  }
+
+  void setTaskDueDate(String taskId, DateTime? dueDate) {
+    final task = _box.get(taskId);
+    if (task == null) return;
+    task.dueDate = dueDate;
+    _persist(task);
+    unawaited(NotificationService.instance.scheduleForTask(task));
   }
 
   void addSubtask(String taskId, String title) {
@@ -173,19 +200,19 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   /// subtasks (which live embedded in each task, so nothing else to clean
   /// up). Used when the project itself is deleted.
   void deleteTasksInProject(String projectId) {
-    final idsToDelete = state
-        .where((t) => t.projectId == projectId)
-        .map((t) => t.id)
-        .toSet();
-    if (idsToDelete.isEmpty) return;
-    for (final id in idsToDelete) {
-      unawaited(_box.delete(id));
+    final toDelete = state.where((t) => t.projectId == projectId).toList();
+    if (toDelete.isEmpty) return;
+    for (final task in toDelete) {
+      unawaited(NotificationService.instance.cancelForTask(task));
+      unawaited(_box.delete(task.id));
     }
+    final idsToDelete = toDelete.map((t) => t.id).toSet();
     state = state.where((t) => !idsToDelete.contains(t.id)).toList();
   }
 
   /// Wipes every task. Used by Settings > Wipe All Data.
   void clearAll() {
+    unawaited(NotificationService.instance.cancelAll());
     unawaited(_box.clear());
     state = [];
   }
@@ -193,9 +220,15 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   /// Replaces every task with [tasks]. Used when restoring from a backup —
   /// anything currently stored is discarded first.
   void restoreAll(List<Task> tasks) {
+    unawaited(NotificationService.instance.cancelAll());
     unawaited(_box.clear());
     unawaited(_box.putAll({for (final t in tasks) t.id: t}));
     state = tasks;
     _sortState();
+    for (final task in tasks) {
+      if (task.dueDate != null && !task.isChecked) {
+        unawaited(NotificationService.instance.scheduleForTask(task));
+      }
+    }
   }
 }
