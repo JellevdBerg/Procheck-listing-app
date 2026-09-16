@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task.dart';
 import '../models/task_priority.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
 import 'nocturne/nocturne_widgets.dart';
@@ -27,6 +28,7 @@ class SmartViewTaskRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.nocturne;
+    final dateFormat = ref.watch(settingsProvider).dateFormat;
     final priorityTag = NocturneTag.forPriority(task.priority);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -66,7 +68,7 @@ class SmartViewTaskRow extends ConsumerWidget {
           if (task.priority != TaskPriority.none) const SizedBox(width: 6),
           if (task.dueDate != null)
             NocturneTag(
-              label: formatDueDate(task.dueDate!),
+              label: formatDueDate(task.dueDate!, dateFormat),
               icon: Icons.access_time,
               outline: true,
             ),
