@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/attachment.dart';
 import 'nocturne/nocturne_widgets.dart';
@@ -87,6 +88,27 @@ class AttachmentChip extends StatelessWidget {
   final Attachment attachment;
   final VoidCallback onRemove;
 
+  bool get _canOpen => !kIsWeb && attachment.path != null;
+
+  Future<void> _open(BuildContext context) async {
+    final path = attachment.path;
+    if (!_canOpen || path == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Can't open attachments in the browser — download them instead."),
+        ),
+      );
+      return;
+    }
+
+    final opened = await launchUrl(Uri.file(path));
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open "${attachment.name}".')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -105,11 +127,17 @@ class AttachmentChip extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              attachment.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
+            child: InkWell(
+              onTap: () => _open(context),
+              child: Text(
+                attachment.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  decoration: _canOpen ? TextDecoration.underline : null,
+                  decorationColor: theme.hintColor,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 8),

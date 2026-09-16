@@ -142,7 +142,8 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   Widget build(BuildContext context) {
     final task = widget.task;
     final notifier = ref.read(tasksProvider.notifier);
-    final reduceMotion = ref.watch(settingsProvider).reduceMotion;
+    final settings = ref.watch(settingsProvider);
+    final reduceMotion = settings.reduceMotion;
 
     // Once expanded, the notes panel already shows the full text, so the
     // collapsed preview line would just be a duplicate. Due date shows as
@@ -186,7 +187,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                 const SizedBox(width: 6),
               if (task.dueDate != null) ...[
                 NocturneTag(
-                  label: formatDueDate(task.dueDate!),
+                  label: formatDueDate(task.dueDate!, settings.dateFormat),
                   icon: Icons.access_time,
                   outline: true,
                 ),
@@ -243,26 +244,24 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   }
 }
 
-/// A short, locale-agnostic rendering of a due date, e.g. "Sep 20, 2:30 PM".
-String formatDueDate(DateTime dueDate) {
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
+/// Renders a due date's numeric date portion according to
+/// [AppSettings.dateFormat] (e.g. "09/20/2026, 2:30 PM"), so it actually
+/// matches whichever of the three formats is picked in Settings > Task
+/// defaults rather than always showing the same fixed "Sep 20" style.
+String formatDueDate(DateTime dueDate, DateFormatOption format) {
   final hour12 = dueDate.hour % 12 == 0 ? 12 : dueDate.hour % 12;
   final minute = dueDate.minute.toString().padLeft(2, '0');
   final period = dueDate.hour < 12 ? 'AM' : 'PM';
-  return '${months[dueDate.month - 1]} ${dueDate.day}, $hour12:$minute $period';
+
+  final month = dueDate.month.toString().padLeft(2, '0');
+  final day = dueDate.day.toString().padLeft(2, '0');
+  final year = dueDate.year.toString().padLeft(4, '0');
+  final datePart = switch (format) {
+    DateFormatOption.mdy => '$month/$day/$year',
+    DateFormatOption.dmy => '$day/$month/$year',
+    DateFormatOption.iso => '$year-$month-$day',
+  };
+  return '$datePart, $hour12:$minute $period';
 }
 
 /// The expanded region of a [TaskTile]: subtasks below the task, with a
@@ -370,6 +369,7 @@ class _DueDateRow extends ConsumerWidget {
     final dueDate = task.dueDate;
     final isOverdue =
         dueDate != null && !task.isChecked && dueDate.isBefore(DateTime.now());
+    final dateFormat = ref.watch(settingsProvider).dateFormat;
 
     return Row(
       children: [
@@ -392,7 +392,7 @@ class _DueDateRow extends ConsumerWidget {
               : InkWell(
                   onTap: () => _pickDueDate(context, ref),
                   child: Text(
-                    'Due ${formatDueDate(dueDate)}',
+                    'Due ${formatDueDate(dueDate, dateFormat)}',
                     style: TextStyle(
                       color: isOverdue ? theme.colorScheme.error : null,
                       fontWeight: isOverdue ? FontWeight.w600 : null,

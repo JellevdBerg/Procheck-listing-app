@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
+import '../widgets/task_tile.dart' show formatDueDate;
 
 /// True for an unchecked task with no due date, or one overdue — it needs
 /// attention now rather than being scheduled for later.
@@ -42,6 +45,23 @@ class DashboardScreen extends ConsumerWidget {
 
     final openCount = relevantTasks.where((t) => isOpenTask(t, now)).length;
     final pendingCount = relevantTasks.where((t) => isPendingTask(t, now)).length;
+
+    // The ring chart partitions every relevant task into exactly one of
+    // three buckets (unlike open/pending above, which only cover unchecked
+    // tasks): done, overdue-and-not-done, or still-active.
+    final completedCount = relevantTasks.where((t) => t.isChecked).length;
+    final overdueCount = relevantTasks
+        .where((t) => !t.isChecked && t.dueDate != null && !t.dueDate!.isAfter(now))
+        .length;
+    final activeCount = relevantTasks.length - completedCount - overdueCount;
+
+    final dateFormat = ref.watch(settingsProvider).dateFormat;
+    final projectById = {for (final project in activeProjects) project.id: project};
+    final overdueTasks =
+        relevantTasks
+            .where((t) => !t.isChecked && t.dueDate != null && !t.dueDate!.isAfter(now))
+            .toList()
+          ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
 
     final rows = [
       for (final project in activeProjects)
@@ -123,30 +143,76 @@ class DashboardScreen extends ConsumerWidget {
             },
           ),
           const SizedBox(height: 22.4),
-          const NocturneSectionLabel('BY PROJECT'),
-          if (rows.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'No active projects or unfiled tasks yet.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            )
-          else
-            Expanded(
-              child: Card(
-                margin: EdgeInsets.zero,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 11.2),
-                  itemCount: rows.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1),
-                  itemBuilder: (context, index) => rows[index].build(
-                    context,
-                    onOpenProject: onOpenProject,
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _TaskStatusRing(
+                    active: activeCount,
+                    overdue: overdueCount,
+                    completed: completedCount,
                   ),
-                ),
+                  const SizedBox(height: 22.4),
+                  const NocturneSectionLabel('OVERDUE'),
+                  const SizedBox(height: 8),
+                  if (overdueTasks.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'No overdue tasks.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    )
+                  else
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 11.2),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < overdueTasks.length; i++) ...[
+                              if (i > 0) const Divider(height: 1),
+                              _OverdueTaskRow(
+                                task: overdueTasks[i],
+                                projectName: projectById[overdueTasks[i].projectId]?.name,
+                                dateFormat: dateFormat,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 22.4),
+                  const NocturneSectionLabel('BY PROJECT'),
+                  const SizedBox(height: 8),
+                  if (rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        'No active projects or unfiled tasks yet.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    )
+                  else
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 11.2),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < rows.length; i++) ...[
+                              if (i > 0) const Divider(height: 1),
+                              rows[i].build(context, onOpenProject: onOpenProject),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -264,6 +330,204 @@ class _ProjectRow {
       builder: (rowContext) => InkWell(
         onTap: () => onOpenProject(project.id, rowContext),
         child: content,
+      ),
+    );
+  }
+}
+
+/// A hand-rolled donut chart (no charting package in this app) splitting
+/// every relevant task into active/overdue/completed, with a count legend.
+class _TaskStatusRing extends StatelessWidget {
+  const _TaskStatusRing({
+    required this.active,
+    required this.overdue,
+    required this.completed,
+  });
+
+  final int active;
+  final int overdue;
+  final int completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final total = active + overdue + completed;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 88,
+              height: 88,
+              child: CustomPaint(
+                painter: _RingPainter(
+                  trackColor: tokens.neutral200,
+                  segments: total == 0
+                      ? const []
+                      : [
+                          _RingSegment(active.toDouble(), context.nocturneAccent),
+                          _RingSegment(overdue.toDouble(), NocturnePriority.high),
+                          _RingSegment(completed.toDouble(), NocturneStatus.done),
+                        ],
+                ),
+                child: Center(
+                  child: Text('$total', style: Theme.of(context).textTheme.titleLarge),
+                ),
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _RingLegendRow(color: context.nocturneAccent, label: 'Active', value: active),
+                  const SizedBox(height: 10),
+                  _RingLegendRow(color: NocturnePriority.high, label: 'Overdue', value: overdue),
+                  const SizedBox(height: 10),
+                  _RingLegendRow(
+                    color: NocturneStatus.done,
+                    label: 'Completed',
+                    value: completed,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RingLegendRow extends StatelessWidget {
+  const _RingLegendRow({required this.color, required this.label, required this.value});
+
+  final Color color;
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    return Row(
+      children: [
+        Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label, style: TextStyle(fontSize: 13, color: tokens.neutral400)),
+        ),
+        Text(
+          '$value',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+      ],
+    );
+  }
+}
+
+class _RingSegment {
+  const _RingSegment(this.value, this.color);
+
+  final double value;
+  final Color color;
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({required this.segments, required this.trackColor});
+
+  final List<_RingSegment> segments;
+  final Color trackColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = size.shortestSide * 0.16;
+    final rect = Rect.fromLTWH(
+      strokeWidth / 2,
+      strokeWidth / 2,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
+    );
+
+    final track = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    canvas.drawArc(rect, 0, 2 * math.pi, false, track);
+
+    final total = segments.fold<double>(0, (sum, s) => sum + s.value);
+    if (total <= 0) return;
+
+    var startAngle = -math.pi / 2;
+    for (final segment in segments) {
+      if (segment.value <= 0) continue;
+      final sweep = (segment.value / total) * 2 * math.pi;
+      final paint = Paint()
+        ..color = segment.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth;
+      canvas.drawArc(rect, startAngle, sweep, false, paint);
+      startAngle += sweep;
+    }
+  }
+
+  // Segment values are recomputed fresh on every build, so a cheap
+  // always-repaint is simpler than deep-comparing the list.
+  @override
+  bool shouldRepaint(covariant _RingPainter oldDelegate) => true;
+}
+
+/// A single overdue task's row in the Dashboard's OVERDUE list, showing
+/// which project (or "Unfiled") it belongs to and how it's overdue.
+class _OverdueTaskRow extends StatelessWidget {
+  const _OverdueTaskRow({
+    required this.task,
+    required this.projectName,
+    required this.dateFormat,
+  });
+
+  final Task task;
+  final String? projectName;
+  final DateFormatOption dateFormat;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, size: 16, color: NocturnePriority.high),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  task.title,
+                  style: const TextStyle(fontSize: 14),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  projectName ?? 'Unfiled',
+                  style: TextStyle(fontSize: 12, color: tokens.neutral400),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            formatDueDate(task.dueDate!, dateFormat),
+            style: const TextStyle(fontSize: 12, color: NocturnePriority.high),
+          ),
+        ],
       ),
     );
   }

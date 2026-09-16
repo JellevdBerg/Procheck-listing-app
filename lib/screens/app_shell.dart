@@ -107,7 +107,7 @@ class _AppShellState extends ConsumerState<AppShell>
   void _showUndo({required String label, required VoidCallback onUndo}) {
     _undoTimer?.cancel();
     setState(() => _pendingUndo = _PendingUndo(label: label, onUndo: onUndo));
-    _undoTimer = Timer(const Duration(seconds: 3), () {
+    _undoTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _pendingUndo = null);
     });
   }

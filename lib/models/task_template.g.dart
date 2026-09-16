@@ -24,13 +24,14 @@ class TaskTemplateAdapter extends TypeAdapter<TaskTemplate> {
       notes: fields[4] as String?,
       attachments:
           fields[5] == null ? [] : (fields[5] as List?)?.cast<Attachment>(),
+      workspaceId: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, TaskTemplate obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -42,7 +43,9 @@ class TaskTemplateAdapter extends TypeAdapter<TaskTemplate> {
       ..writeByte(4)
       ..write(obj.notes)
       ..writeByte(5)
-      ..write(obj.attachments);
+      ..write(obj.attachments)
+      ..writeByte(6)
+      ..write(obj.workspaceId);
   }
 
   @override

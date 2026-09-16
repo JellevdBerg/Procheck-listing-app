@@ -8,6 +8,7 @@ import '../data/hive_setup.dart';
 import '../models/activity_entry.dart';
 import '../models/project.dart';
 import '../models/project_comment.dart';
+import 'settings_provider.dart';
 import 'tasks_provider.dart';
 
 final projectsProvider = StateNotifierProvider<ProjectsNotifier, List<Project>>(
@@ -19,15 +20,58 @@ final projectsProvider = StateNotifierProvider<ProjectsNotifier, List<Project>>(
 /// Persistence to Hive is fire-and-forget: [state] is the source of truth
 /// for the UI and is updated synchronously, while the on-disk copy catches
 /// up in the background.
+///
+/// [state] only ever holds the *current workspace's* projects — see
+/// [AppSettings.currentWorkspaceId] — so every screen that reads this
+/// provider gets workspace isolation for free, without filtering it
+/// itself. [_box] remains the full, unfiltered on-disk store; anything
+/// that must reach across workspaces (backup export, wipe-all, removing a
+/// workspace) goes through [allValues] or the `*ForWorkspace` methods
+/// instead of [state].
 class ProjectsNotifier extends StateNotifier<List<Project>> {
-  ProjectsNotifier(this._ref) : super(_box.values.toList()) {
+  ProjectsNotifier(Ref ref)
+    : _ref = ref,
+      super(_initialState(ref)) {
     _sortState();
+    _ref.listen<String>(
+      settingsProvider.select((s) => s.currentWorkspaceId),
+      (previous, next) {
+        if (previous == next) return;
+        state = _box.values.where((p) => p.workspaceId == next).toList();
+        _sortState();
+      },
+    );
   }
 
   final Ref _ref;
 
   static Box<Project> get _box => Hive.box<Project>(projectBoxName);
   static final _neverOpened = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Every project regardless of workspace — used only where that's
+  /// explicitly correct (backup export, Settings > Wipe All Data already
+  /// clearing the whole box).
+  List<Project> get allValues => _box.values.toList();
+
+  static List<Project> _initialState(Ref ref) {
+    final settings = ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
+    return _box.values
+        .where((p) => p.workspaceId == settings.currentWorkspaceId)
+        .toList();
+  }
+
+  /// Projects saved before workspaces had real data isolation have no
+  /// [Project.workspaceId] — a one-time backfill onto the first workspace,
+  /// so filtering by id can rely on it always being set from here on.
+  static void _migrateLegacyWorkspaceIds(String defaultWorkspaceId) {
+    for (final project in _box.values) {
+      if (project.workspaceId == null) {
+        project.workspaceId = defaultWorkspaceId;
+        unawaited(project.save());
+      }
+    }
+  }
 
   void _sortState() {
     final sorted = [...state]
@@ -47,6 +91,7 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
       name: name,
       createdAt: DateTime.now(),
       colorIndex: colorIndex,
+      workspaceId: _ref.read(settingsProvider).currentWorkspaceId,
     );
     project.activityLog.add(
       ActivityEntry(
@@ -170,6 +215,26 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     state = state.where((p) => p.id != id).toList();
   }
 
+  /// How many projects belong to [workspaceId] — shown in the "remove
+  /// workspace" confirmation before [deleteAllForWorkspace] runs.
+  int countForWorkspace(String workspaceId) =>
+      _box.values.where((p) => p.workspaceId == workspaceId).length;
+
+  /// Deletes every project (and, via [ProjectsNotifier.deleteProject]'s own
+  /// cascade, every task filed under one) that belongs to [workspaceId].
+  /// Used when the workspace itself is removed — see the sidebar's
+  /// workspace context menu, which confirms this with the user first via
+  /// [countForWorkspace].
+  void deleteAllForWorkspace(String workspaceId) {
+    final ids = _box.values
+        .where((p) => p.workspaceId == workspaceId)
+        .map((p) => p.id)
+        .toList();
+    for (final id in ids) {
+      deleteProject(id);
+    }
+  }
+
   /// Wipes every project. Used by Settings > Wipe All Data.
   void clearAll() {
     unawaited(_box.clear());
@@ -177,11 +242,17 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   }
 
   /// Replaces every project with [projects]. Used when restoring from a
-  /// backup — anything currently stored is discarded first.
+  /// backup — anything currently stored is discarded first. [projects] may
+  /// span every workspace (a full backup), so [state] is narrowed back down
+  /// to the current one afterward, same as normal operation.
   void restoreAll(List<Project> projects) {
     unawaited(_box.clear());
     unawaited(_box.putAll({for (final p in projects) p.id: p}));
-    state = projects;
+    final settings = _ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
+    state = _box.values
+        .where((p) => p.workspaceId == settings.currentWorkspaceId)
+        .toList();
     _sortState();
   }
 }
