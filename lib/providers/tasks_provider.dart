@@ -13,6 +13,7 @@ import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../models/task_template.dart';
 import 'projects_provider.dart';
+import 'settings_provider.dart';
 
 final tasksProvider = StateNotifierProvider<TasksNotifier, List<Task>>((ref) {
   return TasksNotifier(ref);
@@ -21,14 +22,53 @@ final tasksProvider = StateNotifierProvider<TasksNotifier, List<Task>>((ref) {
 /// Persistence to Hive is fire-and-forget: [state] is the source of truth
 /// for the UI and is updated synchronously, while the on-disk copy catches
 /// up in the background.
+///
+/// [state] only ever holds the *current workspace's* tasks — see
+/// [AppSettings.currentWorkspaceId] — so every screen that reads this
+/// provider gets workspace isolation for free. [_box] remains the full,
+/// unfiltered on-disk store; backup export, wipe-all, and removing a
+/// workspace go through [allValues]/`*ForWorkspace` instead of [state].
 class TasksNotifier extends StateNotifier<List<Task>> {
-  TasksNotifier(this._ref) : super(_box.values.toList()) {
+  TasksNotifier(Ref ref) : _ref = ref, super(_initialState(ref)) {
     _sortState();
+    _ref.listen<String>(
+      settingsProvider.select((s) => s.currentWorkspaceId),
+      (previous, next) {
+        if (previous == next) return;
+        state = _box.values.where((t) => t.workspaceId == next).toList();
+        _sortState();
+      },
+    );
   }
 
   final Ref _ref;
 
   static Box<Task> get _box => Hive.box<Task>(taskBoxName);
+
+  /// Every task regardless of workspace — used only where that's
+  /// explicitly correct (backup export, Settings > Wipe All Data already
+  /// clearing the whole box).
+  List<Task> get allValues => _box.values.toList();
+
+  static List<Task> _initialState(Ref ref) {
+    final settings = ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
+    return _box.values
+        .where((t) => t.workspaceId == settings.currentWorkspaceId)
+        .toList();
+  }
+
+  /// Tasks saved before workspaces had real data isolation have no
+  /// [Task.workspaceId] — a one-time backfill onto the first workspace, so
+  /// filtering by id can rely on it always being set from here on.
+  static void _migrateLegacyWorkspaceIds(String defaultWorkspaceId) {
+    for (final task in _box.values) {
+      if (task.workspaceId == null) {
+        task.workspaceId = defaultWorkspaceId;
+        unawaited(task.save());
+      }
+    }
+  }
 
   /// Logs a task-level event to its parent project's Activity log — a
   /// no-op for unfiled tasks (no project to log against).
@@ -128,6 +168,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       priorityIndex: priority.index,
       notes: notes,
       attachments: attachments,
+      workspaceId: _ref.read(settingsProvider).currentWorkspaceId,
     );
     unawaited(_box.put(task.id, task));
     state = [task, ...state];
@@ -327,6 +368,30 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     state = state.where((t) => !idsToDelete.contains(t.id)).toList();
   }
 
+  /// How many tasks belong to [workspaceId] (filed or unfiled) — shown in
+  /// the "remove workspace" confirmation before [deleteAllForWorkspace]
+  /// runs.
+  int countForWorkspace(String workspaceId) =>
+      _box.values.where((t) => t.workspaceId == workspaceId).length;
+
+  /// Deletes every task belonging to [workspaceId], filed or not. Used when
+  /// the workspace itself is removed — see the sidebar's workspace context
+  /// menu. Filed tasks are normally already gone by then (their project's
+  /// own deletion cascades via [deleteTasksInProject]); this is what
+  /// catches the unfiled ones, and acts as a backstop for the rest.
+  void deleteAllForWorkspace(String workspaceId) {
+    final toDelete = _box.values
+        .where((t) => t.workspaceId == workspaceId)
+        .toList();
+    if (toDelete.isEmpty) return;
+    for (final task in toDelete) {
+      unawaited(NotificationService.instance.cancelForTask(task));
+      unawaited(_box.delete(task.id));
+    }
+    final idsToDelete = toDelete.map((t) => t.id).toSet();
+    state = state.where((t) => !idsToDelete.contains(t.id)).toList();
+  }
+
   /// Wipes every task. Used by Settings > Wipe All Data.
   void clearAll() {
     unawaited(NotificationService.instance.cancelAll());
@@ -335,12 +400,18 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   }
 
   /// Replaces every task with [tasks]. Used when restoring from a backup —
-  /// anything currently stored is discarded first.
+  /// anything currently stored is discarded first. [tasks] may span every
+  /// workspace (a full backup), so [state] is narrowed back down to the
+  /// current one afterward, same as normal operation.
   void restoreAll(List<Task> tasks) {
     unawaited(NotificationService.instance.cancelAll());
     unawaited(_box.clear());
     unawaited(_box.putAll({for (final t in tasks) t.id: t}));
-    state = tasks;
+    final settings = _ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
+    state = _box.values
+        .where((t) => t.workspaceId == settings.currentWorkspaceId)
+        .toList();
     _sortState();
     for (final task in tasks) {
       if (task.dueDate != null && !task.isChecked) {

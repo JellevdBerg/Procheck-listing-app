@@ -30,13 +30,14 @@ class TaskAdapter extends TypeAdapter<Task> {
       priorityIndex: fields[10] == null ? 0 : fields[10] as int,
       attachments:
           fields[11] == null ? [] : (fields[11] as List?)?.cast<Attachment>(),
+      workspaceId: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -60,7 +61,9 @@ class TaskAdapter extends TypeAdapter<Task> {
       ..writeByte(10)
       ..write(obj.priorityIndex)
       ..writeByte(11)
-      ..write(obj.attachments);
+      ..write(obj.attachments)
+      ..writeByte(12)
+      ..write(obj.workspaceId);
   }
 
   @override

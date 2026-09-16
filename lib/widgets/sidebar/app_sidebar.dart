@@ -318,15 +318,61 @@ class AppSidebar extends ConsumerWidget {
         );
         if (name != null) notifier.renameWorkspace(workspaceIndex, name);
       case _WorkspaceAction.remove:
-        final removed = notifier.removeWorkspace(workspaceIndex);
-        if (!removed && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Can't remove the only workspace."),
-            ),
-          );
-        }
+        await _removeWorkspace(context, ref, workspaceIndex);
     }
+  }
+
+  /// Removing a workspace is destructive — unlike a rename, it takes every
+  /// project/task/template tagged with that workspace down with it (see
+  /// AppSettings.workspaceIds) — so this confirms with the user first,
+  /// naming exactly how much would be deleted, then cascades the delete
+  /// through each data provider before dropping the workspace itself.
+  static Future<void> _removeWorkspace(
+    BuildContext context,
+    WidgetRef ref,
+    int workspaceIndex,
+  ) async {
+    final settings = ref.read(settingsProvider);
+    if (settings.workspaceNames.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Can't remove the only workspace.")),
+      );
+      return;
+    }
+
+    final workspaceId = settings.workspaceIds[workspaceIndex];
+    final workspaceName = settings.workspaceNames[workspaceIndex];
+    final projectCount = ref
+        .read(projectsProvider.notifier)
+        .countForWorkspace(workspaceId);
+    final taskCount = ref
+        .read(tasksProvider.notifier)
+        .countForWorkspace(workspaceId);
+    final templateCount = ref
+        .read(taskTemplatesProvider.notifier)
+        .countForWorkspace(workspaceId);
+
+    final isEmpty = projectCount == 0 && taskCount == 0 && templateCount == 0;
+    final message = isEmpty
+        ? 'This workspace has no projects, tasks, or templates. This cannot be undone.'
+        : 'This permanently deletes $projectCount project(s), $taskCount '
+              'task(s), and $templateCount template(s) in "$workspaceName". '
+              'This cannot be undone.';
+
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove workspace?',
+      message: message,
+      confirmLabel: 'Remove',
+    );
+    if (!confirmed) return;
+
+    // Projects first — deleting one cascades to its own tasks — then a
+    // sweep for whatever's left (unfiled tasks, templates).
+    ref.read(projectsProvider.notifier).deleteAllForWorkspace(workspaceId);
+    ref.read(tasksProvider.notifier).deleteAllForWorkspace(workspaceId);
+    ref.read(taskTemplatesProvider.notifier).deleteAllForWorkspace(workspaceId);
+    ref.read(settingsProvider.notifier).removeWorkspace(workspaceIndex);
   }
 
   static Future<void> _showFavoriteContextMenu(

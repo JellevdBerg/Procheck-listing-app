@@ -21,6 +21,7 @@ class Task extends HiveObject {
     double? sortOrder,
     this.priorityIndex = 0,
     List<Attachment>? attachments,
+    this.workspaceId,
   }) : subtasks = subtasks ?? [],
        attachments = attachments ?? [],
        sortOrder = sortOrder ?? createdAt.millisecondsSinceEpoch.toDouble();
@@ -77,6 +78,14 @@ class Task extends HiveObject {
   @HiveField(11, defaultValue: [])
   List<Attachment> attachments;
 
+  /// Which workspace this task belongs to (see AppSettings.workspaceIds in
+  /// settings_provider.dart) — set even for tasks filed under a project,
+  /// since unfiled tasks have no project to inherit it from. Null on tasks
+  /// saved before workspaces had real data isolation, backfilled to the
+  /// first workspace's id at startup (see TasksNotifier).
+  @HiveField(12)
+  String? workspaceId;
+
   TaskPriority get priority => TaskPriority.fromIndex(priorityIndex);
   set priority(TaskPriority value) => priorityIndex = value.index;
 
@@ -101,6 +110,7 @@ class Task extends HiveObject {
     'sortOrder': sortOrder,
     'priorityIndex': priorityIndex,
     'attachments': attachments.map((a) => a.toJson()).toList(),
+    'workspaceId': workspaceId,
   };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -122,5 +132,6 @@ class Task extends HiveObject {
     attachments: (json['attachments'] as List<dynamic>? ?? [])
         .map((a) => Attachment.fromJson(a as Map<String, dynamic>))
         .toList(),
+    workspaceId: json['workspaceId'] as String?,
   );
 }

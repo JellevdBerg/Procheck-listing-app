@@ -408,10 +408,12 @@ class _BackupCard extends ConsumerWidget {
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
+    // .allValues, not the (now workspace-scoped) provider state — a backup
+    // spans every workspace, not just whichever one is active right now.
     final json = buildBackupJson(
-      projects: ref.read(projectsProvider),
-      tasks: ref.read(tasksProvider),
-      taskTemplates: ref.read(taskTemplatesProvider),
+      projects: ref.read(projectsProvider.notifier).allValues,
+      tasks: ref.read(tasksProvider.notifier).allValues,
+      taskTemplates: ref.read(taskTemplatesProvider.notifier).allValues,
       settings: ref.read(settingsProvider),
     );
     final bytes = Uint8List.fromList(
@@ -486,10 +488,13 @@ class _BackupCard extends ConsumerWidget {
     );
     if (!confirmed) return;
 
+    // Settings first: it carries the workspace list, which the data
+    // restores below need in place to know which workspace is "current"
+    // when they narrow their own state back down to it.
+    ref.read(settingsProvider.notifier).restoreAll(data.settings);
     ref.read(projectsProvider.notifier).restoreAll(data.projects);
     ref.read(tasksProvider.notifier).restoreAll(data.tasks);
     ref.read(taskTemplatesProvider.notifier).restoreAll(data.taskTemplates);
-    ref.read(settingsProvider.notifier).restoreAll(data.settings);
 
     if (context.mounted) {
       ScaffoldMessenger.of(

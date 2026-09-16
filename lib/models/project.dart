@@ -17,6 +17,7 @@ class Project extends HiveObject {
     this.favorite = false,
     List<ActivityEntry>? activityLog,
     List<ProjectComment>? comments,
+    this.workspaceId,
   }) : activityLog = activityLog ?? [],
        comments = comments ?? [];
 
@@ -59,6 +60,13 @@ class Project extends HiveObject {
   @HiveField(8, defaultValue: [])
   List<ProjectComment> comments;
 
+  /// Which workspace this project belongs to (see AppSettings.workspaceIds
+  /// in settings_provider.dart) — null on projects saved before workspaces
+  /// had real data isolation, backfilled to the first workspace's id at
+  /// startup (see ProjectsNotifier).
+  @HiveField(9)
+  String? workspaceId;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -69,6 +77,7 @@ class Project extends HiveObject {
     'favorite': favorite,
     'activityLog': activityLog.map((a) => a.toJson()).toList(),
     'comments': comments.map((c) => c.toJson()).toList(),
+    'workspaceId': workspaceId,
   };
 
   factory Project.fromJson(Map<String, dynamic> json) => Project(
@@ -87,5 +96,6 @@ class Project extends HiveObject {
     comments: (json['comments'] as List<dynamic>? ?? [])
         .map((c) => ProjectComment.fromJson(c as Map<String, dynamic>))
         .toList(),
+    workspaceId: json['workspaceId'] as String?,
   );
 }
