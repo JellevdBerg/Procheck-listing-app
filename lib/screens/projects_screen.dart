@@ -65,6 +65,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               .toList();
 
     return ListView(
+      key: const Key('projects-scroll'),
       padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 22.4),
       children: [
         Row(

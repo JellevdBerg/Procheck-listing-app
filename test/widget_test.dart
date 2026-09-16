@@ -467,6 +467,33 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Dashboard nav switches screens and lists an active project',
+    (tester) async {
+      // The precise open/pending counting logic has its own thorough,
+      // isolated coverage in dashboard_screen_test.dart (a fresh Hive box
+      // per test, not shared with the rest of this suite). This is just
+      // end-to-end wiring: does the sidebar's Dashboard entry actually
+      // switch screens and render real provider data. Kept deliberately
+      // light on assertions since, by this point in the file, many earlier
+      // tests' projects/tasks are still around (this suite never resets
+      // Hive between tests — see the note by pumpApp above) and would
+      // make anything more specific (exact counts, "All clear" being
+      // unique, etc.) flaky.
+      await pumpApp(tester);
+
+      await createProject(tester, 'Rocket');
+
+      await tester.tap(find.byIcon(Icons.dashboard_outlined));
+      await tester.pumpAndSettle();
+
+      // One "Dashboard" is the sidebar nav label (always shown), the other
+      // is the screen's own headline.
+      expect(find.text('Dashboard'), findsNWidgets(2));
+      expect(find.text('Rocket'), findsOneWidget);
+    },
+  );
+
   testWidgets('Settings > Wipe All Data clears everything without restart', (
     tester,
   ) async {

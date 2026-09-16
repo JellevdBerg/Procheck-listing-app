@@ -13,6 +13,7 @@ import '../widgets/sidebar/app_sidebar.dart';
 import '../widgets/text_prompt_dialog.dart';
 import 'app_screen.dart';
 import 'archived_screen.dart';
+import 'dashboard_screen.dart';
 import 'day_screen.dart';
 import 'project_detail_overlay.dart';
 import 'projects_screen.dart';
@@ -309,6 +310,7 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.templates => const TemplatesScreen(),
       AppScreen.archived => ArchivedScreen(onOpenProject: _openProjectFromCard),
       AppScreen.settings => const SettingsScreen(),
+      AppScreen.dashboard => DashboardScreen(onOpenProject: _openProjectFromCard),
     };
   }
 }
