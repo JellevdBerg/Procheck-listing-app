@@ -222,12 +222,23 @@ void main() {
 
         // Per-project breakdown: Launch shows its own open/pending tags,
         // the archived project never appears, and Unfiled shows up because
-        // it has an open task.
-        expect(find.text('Launch'), findsOneWidget);
+        // it has an open task. Each also appears a second time as the
+        // associated-project label on its overdue task's row.
+        expect(find.text('Launch'), findsNWidgets(2));
         expect(find.text('Shelved'), findsNothing);
-        expect(find.text('Unfiled'), findsOneWidget);
+        expect(find.text('Unfiled'), findsNWidgets(2));
         expect(find.text('1 open'), findsNWidgets(2)); // Launch row + Unfiled row
         expect(find.text('1 pending'), findsOneWidget); // Launch row only
+
+        // Ring chart legend: overdue(2) = Launch's overdue + unfiled
+        // overdue, active(1) = Launch's future-dated task, none completed.
+        expect(find.text('Active'), findsOneWidget);
+        expect(find.text('Overdue'), findsOneWidget);
+        expect(find.text('Completed'), findsOneWidget);
+
+        // Overdue list: both overdue tasks show up with their project.
+        expect(find.text('Overdue in Launch'), findsOneWidget);
+        expect(find.text('Unfiled overdue'), findsOneWidget);
       },
     );
   });
