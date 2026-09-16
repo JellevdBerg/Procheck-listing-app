@@ -130,7 +130,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             NocturneButton(
               label: 'New task',
               icon: Icons.add,
-              dense: true,
+              variant: NocturneButtonVariant.primary,
               onPressed: () => showCreateTaskSheet(context),
             ),
           ],
