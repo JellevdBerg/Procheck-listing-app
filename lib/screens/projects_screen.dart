@@ -181,6 +181,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
+  /// The grid never grows past this many rows — beyond it, projects flow
+  /// into a new horizontally-scrollable page instead (see [_buildGrid]).
+  static const _maxGridRows = 2;
+
   Widget _buildGrid(
     BuildContext context,
     List<Project> projects,
@@ -194,39 +198,76 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             .clamp(1, 1 << 30);
         final spacing = 11.2 * (columnCapacity - 1);
         final cardWidth = (constraints.maxWidth - spacing) / columnCapacity;
+        // Only as tall as the current projects actually need, capped at
+        // _maxGridRows — one row of projects shouldn't reserve a whole
+        // second row's worth of dead space below it.
+        final rowsNeeded = (projects.length / columnCapacity).ceil().clamp(
+          1,
+          _maxGridRows,
+        );
+        final gridHeight =
+            _featuredCardHeight * rowsNeeded + 11.2 * (rowsNeeded - 1);
 
-        return Wrap(
-          spacing: 11.2,
-          runSpacing: 11.2,
-          children: [
-            for (final project in projects)
-              PopOutRemoval(
-                key: ValueKey(project.id),
+        // Each "page" is a full-width Wrap that fills left-to-right,
+        // top-to-bottom exactly like before, just capped to the number of
+        // cards that fit in _maxGridRows rows — extra projects start a new
+        // page instead of a 3rd row, and those pages sit side by side in a
+        // horizontally scrolling Row.
+        final perPage = columnCapacity * _maxGridRows;
+        final pages = <List<Project>>[];
+        for (var i = 0; i < projects.length; i += perPage) {
+          final end = (i + perPage < projects.length)
+              ? i + perPage
+              : projects.length;
+          pages.add(projects.sublist(i, end));
+        }
+
+        Widget buildCard(Project project) => PopOutRemoval(
+          key: ValueKey(project.id),
+          reduceMotion: reduceMotion,
+          onRemoved: () =>
+              ref.read(projectsProvider.notifier).deleteProject(project.id),
+          builder: (context, triggerRemoval) => SizedBox(
+            width: cardWidth,
+            height: _featuredCardHeight,
+            child: Builder(
+              builder: (cardContext) => ProjectCard(
+                project: project,
+                featured: true,
                 reduceMotion: reduceMotion,
-                onRemoved: () =>
-                    ref.read(projectsProvider.notifier).deleteProject(project.id),
-                builder: (context, triggerRemoval) => SizedBox(
-                  width: cardWidth,
-                  height: _featuredCardHeight,
-                  child: Builder(
-                    builder: (cardContext) => ProjectCard(
-                      project: project,
-                      featured: true,
-                      reduceMotion: reduceMotion,
-                      tasks: tasks
-                          .where((t) => t.projectId == project.id)
-                          .toList(),
-                      onTap: () => widget.onOpenProject(project.id, cardContext),
-                      onDelete: triggerRemoval,
-                      onArchive: () => _archiveProject(project),
-                      onToggleFavorite: () => ref
-                          .read(projectsProvider.notifier)
-                          .toggleFavorite(project.id),
+                tasks: tasks.where((t) => t.projectId == project.id).toList(),
+                onTap: () => widget.onOpenProject(project.id, cardContext),
+                onDelete: triggerRemoval,
+                onArchive: () => _archiveProject(project),
+                onToggleFavorite: () => ref
+                    .read(projectsProvider.notifier)
+                    .toggleFavorite(project.id),
+              ),
+            ),
+          ),
+        );
+
+        return SizedBox(
+          height: gridHeight,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var p = 0; p < pages.length; p++) ...[
+                  if (p > 0) const SizedBox(width: 11.2),
+                  SizedBox(
+                    width: constraints.maxWidth,
+                    child: Wrap(
+                      spacing: 11.2,
+                      runSpacing: 11.2,
+                      children: [for (final project in pages[p]) buildCard(project)],
                     ),
                   ),
-                ),
-              ),
-          ],
+                ],
+              ],
+            ),
+          ),
         );
       },
     );
