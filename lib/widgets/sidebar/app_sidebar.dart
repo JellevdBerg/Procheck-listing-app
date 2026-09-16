@@ -7,6 +7,7 @@ import '../../providers/settings_provider.dart';
 import '../../providers/task_templates_provider.dart';
 import '../../providers/tasks_provider.dart';
 import '../../screens/app_screen.dart';
+import '../../screens/dashboard_screen.dart';
 import '../../theme/nocturne_theme.dart';
 import '../app_logo.dart';
 import '../text_prompt_dialog.dart';
@@ -58,6 +59,15 @@ class AppSidebar extends ConsumerWidget {
     final activeProjects = projects.where((p) => !p.archived).toList();
     final favorites = activeProjects.where((p) => p.favorite).toList();
     final archivedCount = projects.where((p) => p.archived).length;
+
+    final activeProjectIds = activeProjects.map((p) => p.id).toSet();
+    final dashboardCount = tasks
+        .where(
+          (t) =>
+              (t.projectId == null || activeProjectIds.contains(t.projectId)) &&
+              (isOpenTask(t, now) || isPendingTask(t, now)),
+        )
+        .length;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -112,6 +122,16 @@ class AppSidebar extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Column(
                       children: [
+                        _NavRow(
+                          icon: Icons.dashboard_outlined,
+                          label: 'Dashboard',
+                          count: dashboardCount,
+                          expanded: expanded,
+                          active: currentScreen == AppScreen.dashboard,
+                          accent: accent,
+                          onTap: () => onScreenSelected(AppScreen.dashboard),
+                        ),
+                        const SizedBox(height: 2),
                         _NavRow(
                           icon: Icons.wb_sunny_outlined,
                           label: 'Today',
