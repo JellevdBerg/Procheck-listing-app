@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../providers/settings_provider.dart';
+import '../theme/nocturne_theme.dart';
 import 'nocturne/nocturne_widgets.dart';
 import 'text_prompt_dialog.dart';
 
@@ -248,8 +249,12 @@ class _ProjectCardState extends State<ProjectCard> {
 
   Widget _buildFeatured(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.nocturne;
     final preview = widget.tasks.take(4).toList();
     final extra = widget.tasks.length - preview.length;
+    final doneCount = widget.tasks.where((t) => t.isChecked).length;
+    final totalCount = widget.tasks.length;
+    final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -261,6 +266,23 @@ class _ProjectCardState extends State<ProjectCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _header(context, showActions: _hovering),
+              if (totalCount > 0) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: tokens.neutral800,
+                    color: accentPalette[widget.project.colorIndex],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$doneCount/$totalCount done',
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.neutral400),
+                ),
+              ],
               const SizedBox(height: 4),
               const Divider(height: 1),
               const SizedBox(height: 8),
