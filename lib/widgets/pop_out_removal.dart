@@ -52,14 +52,6 @@ class _PopOutRemovalState extends State<PopOutRemoval>
     curve: Curves.easeInExpo,
   );
 
-  // A small wiggle layered on top of the shrink for a playful touch,
-  // without ever pushing the scale above 1.0.
-  late final Animation<double> _wiggle = TweenSequence<double>([
-    TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.10), weight: 1),
-    TweenSequenceItem(tween: Tween(begin: 0.10, end: -0.06), weight: 1),
-    TweenSequenceItem(tween: Tween(begin: -0.06, end: 0.0), weight: 1),
-  ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
-
   late final Animation<double> _opacity = CurvedAnimation(
     parent: _controller,
     curve: const Interval(0.25, 1.0, curve: Curves.easeIn),
@@ -99,10 +91,7 @@ class _PopOutRemovalState extends State<PopOutRemoval>
           heightFactor: collapse,
           child: Opacity(
             opacity: (1 - _opacity.value).clamp(0.0, 1.0),
-            child: Transform.rotate(
-              angle: _wiggle.value,
-              child: Transform.scale(scale: collapse, child: child),
-            ),
+            child: Transform.scale(scale: collapse, child: child),
           ),
         );
       },

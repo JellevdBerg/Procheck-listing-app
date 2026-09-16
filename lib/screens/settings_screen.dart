@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/backup_service.dart';
+import '../models/shortcut_binding.dart';
 import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
@@ -53,6 +54,11 @@ class SettingsScreen extends ConsumerWidget {
                         width: (constraints.maxWidth - 22.4 * (columns - 1)) /
                             columns,
                         child: const _BackupCard(),
+                      ),
+                      SizedBox(
+                        width: (constraints.maxWidth - 22.4 * (columns - 1)) /
+                            columns,
+                        child: const _ShortcutsCard(),
                       ),
                     ],
                   ),
@@ -523,5 +529,211 @@ class _BackupCard extends ConsumerWidget {
         const SnackBar(content: Text('All ProCheck data has been wiped.')),
       );
     }
+  }
+}
+
+class _ShortcutsCard extends ConsumerWidget {
+  const _ShortcutsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CardTitle('Keyboard shortcuts'),
+            for (final action in ShortcutAction.values)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        action.label,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    Text(
+                      settings.shortcutFor(action).displayLabel,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (settings.shortcutOverrides.containsKey(action))
+                      IconButton(
+                        tooltip: 'Reset to default',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.restore, size: 16),
+                        onPressed: () => notifier.resetShortcutBinding(action),
+                      )
+                    else
+                      const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => _rebind(context, ref, action),
+                      child: const Text('Change'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _rebind(
+    BuildContext context,
+    WidgetRef ref,
+    ShortcutAction action,
+  ) async {
+    final binding = await _recordShortcut(context);
+    if (binding == null) return;
+
+    final settings = ref.read(settingsProvider);
+    for (final other in ShortcutAction.values) {
+      if (other == action) continue;
+      if (settings.shortcutFor(other).sameCombo(binding)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${binding.displayLabel} is already used by '
+                '"${other.label}". Pick a different combination.',
+              ),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    ref.read(settingsProvider.notifier).setShortcutBinding(action, binding);
+  }
+}
+
+final _modifierKeys = {
+  LogicalKeyboardKey.control,
+  LogicalKeyboardKey.controlLeft,
+  LogicalKeyboardKey.controlRight,
+  LogicalKeyboardKey.shift,
+  LogicalKeyboardKey.shiftLeft,
+  LogicalKeyboardKey.shiftRight,
+  LogicalKeyboardKey.alt,
+  LogicalKeyboardKey.altLeft,
+  LogicalKeyboardKey.altRight,
+  LogicalKeyboardKey.meta,
+  LogicalKeyboardKey.metaLeft,
+  LogicalKeyboardKey.metaRight,
+};
+
+Future<ShortcutBinding?> _recordShortcut(BuildContext context) {
+  return showDialog<ShortcutBinding>(
+    context: context,
+    builder: (context) => const _ShortcutRecorderDialog(),
+  );
+}
+
+/// A small dialog that listens for the next non-modifier key press (while a
+/// modifier is held) and resolves with the [ShortcutBinding] it forms, so
+/// rebinding is "press the combo you want" rather than picking from menus.
+class _ShortcutRecorderDialog extends StatefulWidget {
+  const _ShortcutRecorderDialog();
+
+  @override
+  State<_ShortcutRecorderDialog> createState() =>
+      _ShortcutRecorderDialogState();
+}
+
+class _ShortcutRecorderDialogState extends State<_ShortcutRecorderDialog> {
+  final _focusNode = FocusNode();
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _focusNode.requestFocus(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      Navigator.of(context).pop();
+      return KeyEventResult.handled;
+    }
+    if (_modifierKeys.contains(key)) return KeyEventResult.handled;
+
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final cmdOrCtrl =
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+    final alt =
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight);
+    final shift =
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+
+    if (!cmdOrCtrl && !alt) {
+      setState(
+        () => _error =
+            "Hold Ctrl/Cmd or Alt too, so this won't collide with typing.",
+      );
+      return KeyEventResult.handled;
+    }
+
+    Navigator.of(
+      context,
+    ).pop(ShortcutBinding(key: key, cmdOrCtrl: cmdOrCtrl, shift: shift, alt: alt));
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Press a new shortcut'),
+      content: Focus(
+        focusNode: _focusNode,
+        onKeyEvent: _handleKey,
+        child: SizedBox(
+          width: 280,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Hold a modifier (Ctrl/Cmd or Alt) and press a key.'),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
   }
 }
