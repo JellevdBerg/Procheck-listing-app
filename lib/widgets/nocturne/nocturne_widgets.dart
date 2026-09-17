@@ -192,6 +192,11 @@ class NocturneSegmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final accent = context.nocturneAccent;
+    // The selected segment fills solid with accent (via the boxShadow
+    // below), so its icon/label need a color that contrasts with accent
+    // itself — not accent, which would draw invisible text on an
+    // identically-colored background.
+    final onAccent = Theme.of(context).colorScheme.onPrimary;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -241,7 +246,7 @@ class NocturneSegmented<T> extends StatelessWidget {
                             Icon(
                               iconBuilder!(options[i]),
                               size: 15,
-                              color: value == options[i] ? accent : tokens.text,
+                              color: value == options[i] ? onAccent : tokens.text,
                             ),
                           if (labelBuilder != null)
                             Text(
@@ -249,7 +254,7 @@ class NocturneSegmented<T> extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 13,
                                 color: value == options[i]
-                                    ? accent
+                                    ? onAccent
                                     : tokens.text,
                               ),
                             ),
