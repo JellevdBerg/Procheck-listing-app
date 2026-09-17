@@ -427,11 +427,13 @@ class _StatRow extends StatelessWidget {
         value: '$overdueCount',
         label: 'Overdue',
         valueColor: NocturnePriority.high,
+        labelColor: NocturnePriority.high,
       ),
       _StatCard(
         value: '$dueThisWeekCount',
         label: 'Due this week · $highPriorityDueThisWeek high priority',
         valueColor: NocturnePriority.med,
+        labelColor: NocturnePriority.med,
       ),
       _StatCard(
         value: '${overallProgress.round()}%',
@@ -481,12 +483,17 @@ class _StatCard extends StatelessWidget {
     required this.value,
     required this.label,
     this.valueColor,
+    this.labelColor,
     this.trend,
   });
 
   final String value;
   final String label;
   final Color? valueColor;
+
+  /// Tints the label itself, not just the number above it — left null for
+  /// the neutral default.
+  final Color? labelColor;
   final Widget? trend;
 
   @override
@@ -521,7 +528,7 @@ class _StatCard extends StatelessWidget {
               label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: tokens.neutral400),
+              style: TextStyle(fontSize: 12, color: labelColor ?? tokens.neutral400),
             ),
           ],
         ),
@@ -648,22 +655,6 @@ class _AttentionRow extends StatelessWidget {
             _statusLabel,
             style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w500),
           ),
-          const SizedBox(width: 12),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Open',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: context.nocturneAccent,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(Icons.arrow_forward, size: 14, color: context.nocturneAccent),
-            ],
-          ),
         ],
       ),
     );
@@ -750,9 +741,15 @@ class _StackedBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: SizedBox(
         height: 8,
+        width: double.infinity,
         child: total <= 0
             ? ColoredBox(color: trackColor)
             : Row(
+                // A childless ColoredBox sizes itself to the smallest box its
+                // constraints allow, and Row's default center alignment gives
+                // its children loose (0..height) cross-axis constraints — so
+                // without `stretch` every segment collapses to zero height.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final segment in segments)
                     if (segment.value > 0)
@@ -804,7 +801,6 @@ class _WorkloadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.nocturne;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -814,7 +810,12 @@ class _WorkloadCard extends StatelessWidget {
           children: [
             const _CardHeader(icon: Icons.assignment_outlined, label: 'Workload'),
             const SizedBox(height: 14),
-            _WorkloadRow(label: 'Overdue', value: overdueCount, color: NocturnePriority.high),
+            _WorkloadRow(
+              label: 'Overdue',
+              value: overdueCount,
+              color: NocturnePriority.high,
+              labelColor: NocturnePriority.high,
+            ),
             const SizedBox(height: 10),
             _WorkloadRow(
               label: 'Due today',
@@ -825,7 +826,8 @@ class _WorkloadCard extends StatelessWidget {
             _WorkloadRow(
               label: 'Due this week',
               value: dueThisWeekCount,
-              color: tokens.text,
+              color: NocturnePriority.med,
+              labelColor: NocturnePriority.med,
             ),
           ],
         ),
@@ -835,11 +837,19 @@ class _WorkloadCard extends StatelessWidget {
 }
 
 class _WorkloadRow extends StatelessWidget {
-  const _WorkloadRow({required this.label, required this.value, required this.color});
+  const _WorkloadRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.labelColor,
+  });
 
   final String label;
   final int value;
   final Color color;
+
+  /// See [_StatCard.labelColor].
+  final Color? labelColor;
 
   @override
   Widget build(BuildContext context) {
@@ -847,7 +857,10 @@ class _WorkloadRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(label, style: TextStyle(fontSize: 13, color: tokens.neutral300)),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 13, color: labelColor ?? tokens.neutral300),
+          ),
         ),
         Text(
           '$value',
@@ -1034,7 +1047,7 @@ class _ProjectsTableRow extends StatelessWidget {
     if (summary.open > 0) {
       return NocturneTag(label: '${summary.open} open');
     }
-    return Text('All clear', style: TextStyle(fontSize: 12, color: tokens.neutral500));
+    return Text('No tasks', style: TextStyle(fontSize: 12, color: tokens.neutral500));
   }
 }
 

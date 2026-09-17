@@ -395,6 +395,44 @@ void main() {
     );
 
     testWidgets(
+      'the Task Status bar actually renders a non-zero-height segment '
+      '(regression: a childless ColoredBox inside a centered Row/Expanded '
+      'collapses to zero height without crossAxisAlignment.stretch)',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container.read(projectsProvider.notifier).addProject('Bar Check');
+        container.read(tasksProvider.notifier).addBlankTask(
+          title: 'Open task',
+          projectId: project.id,
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final cardFinder = find
+            .ancestor(of: find.textContaining('Task Status'), matching: find.byType(Card))
+            .first;
+        final segmentFinder = find.descendant(
+          of: cardFinder,
+          matching: find.byType(ColoredBox),
+        );
+        expect(segmentFinder, findsWidgets);
+        for (final element in segmentFinder.evaluate()) {
+          final size = (element.renderObject as RenderBox).size;
+          expect(size.height, greaterThan(0));
+          expect(size.width, greaterThan(0));
+        }
+      },
+    );
+
+    testWidgets(
       'tapping a Projects table row opens that project via onOpenProject',
       (tester) async {
         final container = ProviderContainer();
