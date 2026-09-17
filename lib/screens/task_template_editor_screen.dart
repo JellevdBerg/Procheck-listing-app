@@ -169,6 +169,14 @@ class _TaskTemplateEditorScreenState
                     ),
                   )
                 : ReorderableListView.builder(
+                    // Without this, Flutter also auto-appends its own
+                    // drag handle after the trailing delete button —
+                    // leaving two handle-looking icons per row where only
+                    // the second one actually did anything. Wiring the
+                    // existing leading icon as the real (only) handle
+                    // instead matches where a drag handle sits everywhere
+                    // else in the app (TaskTile's reorderIndex).
+                    buildDefaultDragHandles: false,
                     itemCount: _subtasks.length,
                     onReorderItem: (oldIndex, newIndex) {
                       setState(() {
@@ -180,7 +188,10 @@ class _TaskTemplateEditorScreenState
                       final subtask = _subtasks[index];
                       return ListTile(
                         key: ValueKey(subtask.id),
-                        leading: const Icon(Icons.drag_handle),
+                        leading: ReorderableDragStartListener(
+                          index: index,
+                          child: const Icon(Icons.drag_handle),
+                        ),
                         title: Text(subtask.title),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline),

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -505,16 +506,21 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
 
-    // Scoped to the Settings screen's own scroll view: the sidebar's mini
-    // calendar is a GridView, which builds a Scrollable of its own even
-    // with NeverScrollableScrollPhysics, so an unscoped find.byType(Scrollable)
-    // would match two.
+    // Scoped to the Settings screen's own (vertical) scroll view: the
+    // sidebar's mini calendar is a GridView, which builds a Scrollable of
+    // its own even with NeverScrollableScrollPhysics, and the "Default
+    // landing screen" segmented control now does too (it scrolls
+    // horizontally if it doesn't fit — see NocturneSegmented) — so an
+    // unscoped find.byType(Scrollable) would match more than one, and the
+    // axis check picks out the page's own vertical one specifically.
     await tester.scrollUntilVisible(
       find.text('Wipe all data'),
       200,
       scrollable: find.descendant(
         of: find.byKey(const Key('settings-scroll')),
-        matching: find.byType(Scrollable),
+        matching: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
       ),
     );
     await tester.tap(find.text('Wipe all data'));
@@ -534,5 +540,92 @@ void main() {
 
     expect(find.text('ToWipe'), findsNothing);
     expect(find.textContaining('No unfiled tasks'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+T opens the new task sheet via the global shortcut', (
+    tester,
+  ) async {
+    // Regression test: CallbackShortcuts' own Focus node has
+    // canRequestFocus: false (see app_shell.dart), so it only ever sees a
+    // key event bubbling up from a focused *descendant* — an autofocused
+    // Focus node placed *outside* it (as this app briefly had) never
+    // reaches it, silently making every global shortcut a no-op.
+    await pumpApp(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(dialogTextField(), findsOneWidget);
+
+    // Leave things as they were found: dismiss the sheet rather than
+    // letting it (and the toast's pending timer) dangle into the next test.
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('dragging an unfiled task by its handle reorders it', (
+    tester,
+  ) async {
+    // Regression test: the unfiled-tasks list rendered a drag handle (via
+    // TaskTile's reorderIndex) but was a plain Column, not a
+    // ReorderableListView — so the handle was there but dragging it did
+    // nothing.
+    await pumpApp(tester);
+
+    // This suite never resets Hive between tests, so by this point the
+    // project grid is tall enough (accumulated from earlier tests) that the
+    // "New task" button — below the grid in the page's own ListView — isn't
+    // built yet (Sliver-backed lists only build what's near the viewport).
+    // Scroll it into view first, same as the "Wipe all data" button above.
+    await tester.scrollUntilVisible(
+      find.text('New task'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('projects-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+
+    await createTask(tester, 'Reorder A');
+    await createTask(tester, 'Reorder B');
+
+    // Newest first: B was created after A, so it starts on top.
+    Finder rowOf(String title) => find.ancestor(
+      of: find.text(title),
+      matching: find.byType(ListTile),
+    );
+    expect(
+      tester.getTopLeft(rowOf('Reorder B')).dy <
+          tester.getTopLeft(rowOf('Reorder A')).dy,
+      isTrue,
+    );
+
+    // A single tester.drag() jump doesn't reliably register as a reorder —
+    // ReorderableListView (like the real app's drag, per earlier manual
+    // testing) wants a few incremental pointer moves with pumps between
+    // them, not one large instantaneous move.
+    final handleB = find.descendant(
+      of: rowOf('Reorder B'),
+      matching: find.byIcon(Icons.drag_indicator),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(handleB));
+    for (var i = 0; i < 4; i++) {
+      await gesture.moveBy(const Offset(0, 25));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(rowOf('Reorder A')).dy <
+          tester.getTopLeft(rowOf('Reorder B')).dy,
+      isTrue,
+    );
+    expect(rowOf('Reorder A'), findsOneWidget);
+    expect(rowOf('Reorder B'), findsOneWidget);
   });
 }

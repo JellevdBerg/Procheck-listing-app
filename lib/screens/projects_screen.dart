@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,11 +15,9 @@ import '../widgets/task_tile.dart';
 import '../widgets/text_prompt_dialog.dart';
 import 'app_shell.dart';
 
-enum _ProjectsView { grid, list }
-
-/// The default/home screen: a search bar + view toggle, the project grid
-/// (each card opens via the card-morph overlay), and a bordered list of
-/// unfiled tasks below it.
+/// The default/home screen: a search bar, the project grid (each card opens
+/// via the card-morph overlay), and a bordered list of unfiled tasks below
+/// it.
 class ProjectsScreen extends ConsumerStatefulWidget {
   const ProjectsScreen({
     super.key,
@@ -38,12 +37,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   static const _featuredCardMinWidth = 240.0;
 
   final _searchController = TextEditingController();
+  final _gridScrollController = ScrollController();
   String _query = '';
-  _ProjectsView _view = _ProjectsView.grid;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -90,14 +90,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 ),
               ),
             ),
-            NocturneSegmented<_ProjectsView>(
-              options: _ProjectsView.values,
-              value: _view,
-              iconBuilder: (v) => v == _ProjectsView.grid
-                  ? Icons.grid_view
-                  : Icons.view_list,
-              onChanged: (v) => setState(() => _view = v),
-            ),
             const SizedBox(width: 12),
             NocturneButton(
               label: 'New project',
@@ -118,10 +110,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             )
-          else if (_view == _ProjectsView.grid)
-            _buildGrid(context, projects, tasks, reduceMotion)
           else
-            _buildList(context, projects, tasks, reduceMotion),
+            _buildGrid(context, projects, tasks, reduceMotion),
           const SizedBox(height: 16.8),
         ],
         Row(
@@ -150,30 +140,47 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             margin: EdgeInsets.zero,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 11.2),
-              child: Column(
-                children: [
-                  for (var i = 0; i < unfiledTasks.length; i++)
-                    PopOutRemoval(
-                      key: ValueKey(unfiledTasks[i].id),
-                      reduceMotion: reduceMotion,
-                      shrinkWidth: false,
-                      onRemoved: () => ref
+              // A real ReorderableListView, not a plain Column — the drag
+              // handle TaskTile shows for a non-null reorderIndex needs an
+              // enclosing SliverReorderableList to actually respond to
+              // (previously there wasn't one here, so the handle appeared
+              // but silently did nothing). shrinkWrap + NeverScrollable:
+              // this sits inside the page's own vertical ListView, so it
+              // sizes to its content and leaves scrolling to that parent
+              // rather than fighting it for the same axis.
+              child: ReorderableListView.builder(
+                buildDefaultDragHandles: false,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: unfiledTasks.length,
+                onReorderItem: (oldIndex, newIndex) {
+                  final reordered = [...unfiledTasks];
+                  final moved = reordered.removeAt(oldIndex);
+                  reordered.insert(newIndex, moved);
+                  ref
+                      .read(tasksProvider.notifier)
+                      .reorderTasks(reordered.map((t) => t.id).toList());
+                },
+                itemBuilder: (context, i) => PopOutRemoval(
+                  key: ValueKey(unfiledTasks[i].id),
+                  reduceMotion: reduceMotion,
+                  shrinkWidth: false,
+                  onRemoved: () => ref
+                      .read(tasksProvider.notifier)
+                      .deleteTask(unfiledTasks[i].id),
+                  builder: (context, triggerRemoval) => TaskTile(
+                    task: unfiledTasks[i],
+                    onDelete: triggerRemoval,
+                    onExplicitDelete: () => widget.onShowUndo(
+                      label: '"${unfiledTasks[i].title}" deleted',
+                      onUndo: () => ref
                           .read(tasksProvider.notifier)
-                          .deleteTask(unfiledTasks[i].id),
-                      builder: (context, triggerRemoval) => TaskTile(
-                        task: unfiledTasks[i],
-                        onDelete: triggerRemoval,
-                        onExplicitDelete: () => widget.onShowUndo(
-                          label: '"${unfiledTasks[i].title}" deleted',
-                          onUndo: () => ref
-                              .read(tasksProvider.notifier)
-                              .restoreTask(unfiledTasks[i]),
-                        ),
-                        autoRemoveWhenChecked: true,
-                        reorderIndex: i,
-                      ),
+                          .restoreTask(unfiledTasks[i]),
                     ),
-                ],
+                    autoRemoveWhenChecked: true,
+                    reorderIndex: i,
+                  ),
+                ),
               ),
             ),
           ),
@@ -249,64 +256,47 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
         return SizedBox(
           height: gridHeight,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var p = 0; p < pages.length; p++) ...[
-                  if (p > 0) const SizedBox(width: 11.2),
-                  SizedBox(
-                    width: constraints.maxWidth,
-                    child: Wrap(
-                      spacing: 11.2,
-                      runSpacing: 11.2,
-                      children: [for (final project in pages[p]) buildCard(project)],
+          // A plain mouse wheel only ever reports a vertical delta, which a
+          // purely-horizontal Scrollable otherwise ignores outright — remap
+          // it onto this scrollable's own axis so the wheel (not just
+          // click-and-drag, or a trackpad's native horizontal swipe) can
+          // reach the pages beyond the first.
+          child: Listener(
+            onPointerSignal: (event) {
+              if (event is! PointerScrollEvent ||
+                  !_gridScrollController.hasClients) {
+                return;
+              }
+              final delta = event.scrollDelta.dx.abs() > event.scrollDelta.dy.abs()
+                  ? event.scrollDelta.dx
+                  : event.scrollDelta.dy;
+              _gridScrollController.position.pointerScroll(delta);
+            },
+            child: SingleChildScrollView(
+              controller: _gridScrollController,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var p = 0; p < pages.length; p++) ...[
+                    if (p > 0) const SizedBox(width: 11.2),
+                    SizedBox(
+                      width: constraints.maxWidth,
+                      child: Wrap(
+                        spacing: 11.2,
+                        runSpacing: 11.2,
+                        children: [
+                          for (final project in pages[p]) buildCard(project),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildList(
-    BuildContext context,
-    List<Project> projects,
-    List<Task> tasks,
-    bool reduceMotion,
-  ) {
-    return Column(
-      children: [
-        for (final project in projects)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: PopOutRemoval(
-              key: ValueKey(project.id),
-              reduceMotion: reduceMotion,
-              onRemoved: () =>
-                  ref.read(projectsProvider.notifier).deleteProject(project.id),
-              builder: (context, triggerRemoval) => Builder(
-                builder: (cardContext) => ProjectCard(
-                  project: project,
-                  reduceMotion: reduceMotion,
-                  tasks: tasks
-                      .where((t) => t.projectId == project.id)
-                      .toList(),
-                  onTap: () => widget.onOpenProject(project.id, cardContext),
-                  onDelete: triggerRemoval,
-                  onArchive: () => _archiveProject(project),
-                  onToggleFavorite: () => ref
-                      .read(projectsProvider.notifier)
-                      .toggleFavorite(project.id),
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +7,22 @@ import 'data/notification_service.dart';
 import 'providers/settings_provider.dart';
 import 'screens/splash_screen.dart';
 import 'theme/nocturne_theme.dart';
+
+/// The default [MaterialScrollBehavior] only lets touch/stylus pointers
+/// drag-to-scroll — a mouse click-and-drag is deliberately excluded, since
+/// on most scrollables that would fight with text selection. This app
+/// leans on drag-to-scroll for its horizontally-scrolling project grid
+/// (see ProjectsScreen), which has no selectable text to conflict with, so
+/// mouse is added back in for every scrollable.
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    ...super.dragDevices,
+    PointerDeviceKind.mouse,
+  };
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +44,7 @@ class ProcheckApp extends ConsumerWidget {
       themeMode: settings.themeMode,
       theme: buildNocturneTheme(brightness: Brightness.light, accent: accent),
       darkTheme: buildNocturneTheme(brightness: Brightness.dark, accent: accent),
+      scrollBehavior: const AppScrollBehavior(),
       home: const SplashScreen(),
     );
   }

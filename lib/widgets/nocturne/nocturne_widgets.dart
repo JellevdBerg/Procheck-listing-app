@@ -200,57 +200,66 @@ class NocturneSegmented<T> extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(NocturneRadius.md),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < options.length; i++)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  border: i == 0
-                      ? null
-                      : Border(left: BorderSide(color: tokens.divider)),
-                  boxShadow: value == options[i]
-                      ? [
-                          BoxShadow(
-                            color: accent,
-                            spreadRadius: -1,
-                            blurRadius: 0,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: InkWell(
-                  onTap: () => onChanged(options[i]),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (iconBuilder != null)
-                          Icon(
-                            iconBuilder!(options[i]),
-                            size: 15,
-                            color: value == options[i] ? accent : tokens.text,
-                          ),
-                        if (labelBuilder != null)
-                          Text(
-                            labelBuilder!(options[i]),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: value == options[i]
-                                  ? accent
-                                  : tokens.text,
+        // A SingleChildScrollView rather than a bare Row: with enough
+        // options (or a narrow enough container — the Settings screen's
+        // responsive columns can get quite tight), a fixed-width Row of
+        // segments can ask for more space than it's given, which would
+        // otherwise be a hard overflow error rather than something a user
+        // ever notices.
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < options.length; i++)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: i == 0
+                        ? null
+                        : Border(left: BorderSide(color: tokens.divider)),
+                    boxShadow: value == options[i]
+                        ? [
+                            BoxShadow(
+                              color: accent,
+                              spreadRadius: -1,
+                              blurRadius: 0,
                             ),
-                          ),
-                      ],
+                          ]
+                        : null,
+                  ),
+                  child: InkWell(
+                    onTap: () => onChanged(options[i]),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (iconBuilder != null)
+                            Icon(
+                              iconBuilder!(options[i]),
+                              size: 15,
+                              color: value == options[i] ? accent : tokens.text,
+                            ),
+                          if (labelBuilder != null)
+                            Text(
+                              labelBuilder!(options[i]),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: value == options[i]
+                                    ? accent
+                                    : tokens.text,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

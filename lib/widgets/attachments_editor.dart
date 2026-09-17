@@ -78,7 +78,7 @@ class AttachmentsEditor extends StatelessWidget {
   }
 }
 
-class AttachmentChip extends StatelessWidget {
+class AttachmentChip extends StatefulWidget {
   const AttachmentChip({
     super.key,
     required this.attachment,
@@ -88,10 +88,18 @@ class AttachmentChip extends StatelessWidget {
   final Attachment attachment;
   final VoidCallback onRemove;
 
-  bool get _canOpen => !kIsWeb && attachment.path != null;
+  @override
+  State<AttachmentChip> createState() => _AttachmentChipState();
+}
+
+class _AttachmentChipState extends State<AttachmentChip> {
+  bool _hoveringName = false;
+  bool _hoveringRemove = false;
+
+  bool get _canOpen => !kIsWeb && widget.attachment.path != null;
 
   Future<void> _open(BuildContext context) async {
-    final path = attachment.path;
+    final path = widget.attachment.path;
     if (!_canOpen || path == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -104,7 +112,7 @@ class AttachmentChip extends StatelessWidget {
     final opened = await launchUrl(Uri.file(path));
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open "${attachment.name}".')),
+        SnackBar(content: Text('Could not open "${widget.attachment.name}".')),
       );
     }
   }
@@ -127,28 +135,62 @@ class AttachmentChip extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: InkWell(
-              onTap: () => _open(context),
-              child: Text(
-                attachment.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  decoration: _canOpen ? TextDecoration.underline : null,
-                  decorationColor: theme.hintColor,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _hoveringName = true),
+              onExit: (_) => setState(() => _hoveringName = false),
+              child: GestureDetector(
+                onTap: () => _open(context),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _hoveringName
+                        ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    widget.attachment.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      decoration: _canOpen ? TextDecoration.underline : null,
+                      decorationColor: theme.hintColor,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 8),
           Text(
-            attachment.sizeLabel,
+            widget.attachment.sizeLabel,
             style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
           ),
           const SizedBox(width: 8),
-          InkWell(
-            onTap: onRemove,
-            child: Icon(Icons.close, size: 13, color: theme.hintColor),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hoveringRemove = true),
+            onExit: (_) => setState(() => _hoveringRemove = false),
+            child: GestureDetector(
+              onTap: widget.onRemove,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: _hoveringRemove
+                      ? theme.colorScheme.error.withValues(alpha: 0.14)
+                      : Colors.transparent,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.close,
+                  size: 13,
+                  color: _hoveringRemove ? theme.colorScheme.error : theme.hintColor,
+                ),
+              ),
+            ),
           ),
         ],
       ),

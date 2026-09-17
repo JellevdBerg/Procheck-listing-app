@@ -39,7 +39,12 @@ enum DateFormatOption {
 enum LandingScreenOption {
   projects,
   templates,
-  lastViewed;
+  lastViewed,
+  // Appended, not inserted — this enum's index is what's persisted to disk
+  // (see AppSettings.toJson/fromJson), so a new entry has to go last or
+  // every existing install's saved preference would silently shift to a
+  // different option.
+  dashboard;
 
   static LandingScreenOption fromIndex(int? index) {
     if (index == null ||
@@ -54,6 +59,7 @@ enum LandingScreenOption {
     LandingScreenOption.projects => 'Projects',
     LandingScreenOption.templates => 'Templates',
     LandingScreenOption.lastViewed => 'Last viewed',
+    LandingScreenOption.dashboard => 'Dashboard',
   };
 }
 
