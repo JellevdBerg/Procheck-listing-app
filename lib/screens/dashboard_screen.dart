@@ -154,13 +154,47 @@ class DashboardScreen extends ConsumerWidget {
         children: [
           Text('Dashboard', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 16.8),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 200),
-            child: _StatCard(
-              icon: Icons.folder_outlined,
-              label: 'Active projects',
-              value: activeProjects.length,
-            ),
+          // One row — active-projects count, the ring chart, and the
+          // project completion pane side by side — rather than stacking
+          // them, which used up a lot of vertical space before reaching
+          // OVERDUE/BY PROJECT below. Below a width threshold there isn't
+          // room for that (the ring chart alone needs ~220px to avoid
+          // squashing its legend to nothing), so it falls back to the
+          // original stacked layout instead of overflowing.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final statCard = _StatCard(
+                icon: Icons.folder_outlined,
+                label: 'Active projects',
+                value: activeProjects.length,
+              );
+              final overview = TaskOverviewSection(
+                projects: activeProjects,
+                tasks: relevantTasks,
+                now: now,
+              );
+              if (constraints.maxWidth < 720) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: statCard,
+                    ),
+                    const SizedBox(height: 22.4),
+                    overview,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: statCard),
+                  const SizedBox(width: 11.2),
+                  Expanded(flex: 3, child: overview),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 22.4),
           Expanded(
@@ -168,19 +202,6 @@ class DashboardScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Sits between the "Active projects" stat area above and
-                  // the OVERDUE/BY PROJECT sections below — the page itself
-                  // scrolls to reach those, while the completion pane
-                  // inside this section additionally has its own bounded,
-                  // independently-scrollable list (see
-                  // _ProjectCompletionPane) so a long project list doesn't
-                  // have to grow the whole page around it.
-                  TaskOverviewSection(
-                    projects: activeProjects,
-                    tasks: relevantTasks,
-                    now: now,
-                  ),
-                  const SizedBox(height: 22.4),
                   const NocturneSectionLabel('OVERDUE'),
                   const SizedBox(height: 8),
                   if (overdueTasks.isEmpty)
@@ -275,18 +296,33 @@ class TaskOverviewSection extends StatelessWidget {
         .length;
     final activeCount = tasks.length - completedCount - overdueCount;
     final completions = computeProjectCompletions(projects, tasks);
+    final ring = _TaskStatusRing(
+      active: activeCount,
+      overdue: overdueCount,
+      completed: completedCount,
+    );
+    final pane = _ProjectCompletionPane(completions: completions);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _TaskStatusRing(
-          active: activeCount,
-          overdue: overdueCount,
-          completed: completedCount,
-        ),
-        const SizedBox(height: 22.4),
-        _ProjectCompletionPane(completions: completions),
-      ],
+    // The ring chart's own row (the ring graphic plus its legend) needs
+    // ~220px minimum before the legend gets squashed to nothing, so below
+    // that this falls back to stacking the two instead of overflowing.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 420) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [ring, const SizedBox(height: 22.4), pane],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: ring),
+            const SizedBox(width: 11.2),
+            Expanded(flex: 2, child: pane),
+          ],
+        );
+      },
     );
   }
 }
@@ -438,12 +474,11 @@ class _ProjectCompletionPane extends StatelessWidget {
             // Scrollable, distinct from the page's) instead of growing the
             // page around it.
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: ListView.separated(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(horizontal: 11.2),
                 itemCount: completions.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, i) =>
                     _ProjectCompletionRow(completion: completions[i]),
               ),
@@ -467,15 +502,15 @@ class _ProjectCompletionRow extends StatelessWidget {
     final color = accentPalette[project.colorIndex];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
           Container(
-            width: 9,
-            height: 9,
+            width: 8,
+            height: 8,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             flex: 2,
             child: Text(
@@ -537,49 +572,65 @@ class _TaskStatusRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final total = active + overdue + completed;
+
+    final ring = SizedBox(
+      width: 88,
+      height: 88,
+      child: CustomPaint(
+        painter: _RingPainter(
+          trackColor: tokens.neutral200,
+          segments: total == 0
+              ? const []
+              : [
+                  _RingSegment(active.toDouble(), context.nocturneAccent),
+                  _RingSegment(overdue.toDouble(), NocturnePriority.high),
+                  _RingSegment(completed.toDouble(), NocturneStatus.done),
+                ],
+        ),
+        child: Center(
+          child: Text('$total', style: Theme.of(context).textTheme.titleLarge),
+        ),
+      ),
+    );
+    final legend = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _RingLegendRow(color: context.nocturneAccent, label: 'Active', value: active),
+        const SizedBox(height: 10),
+        _RingLegendRow(color: NocturnePriority.high, label: 'Overdue', value: overdue),
+        const SizedBox(height: 10),
+        _RingLegendRow(color: NocturneStatus.done, label: 'Completed', value: completed),
+      ],
+    );
+
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16.8),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 88,
-              height: 88,
-              child: CustomPaint(
-                painter: _RingPainter(
-                  trackColor: tokens.neutral200,
-                  segments: total == 0
-                      ? const []
-                      : [
-                          _RingSegment(active.toDouble(), context.nocturneAccent),
-                          _RingSegment(overdue.toDouble(), NocturnePriority.high),
-                          _RingSegment(completed.toDouble(), NocturneStatus.done),
-                        ],
-                ),
-                child: Center(
-                  child: Text('$total', style: Theme.of(context).textTheme.titleLarge),
-                ),
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+        // The ring is a fixed 88px plus a 20px gap, so a Row needs
+        // ~220px before the legend has enough room left to show its
+        // values without overflowing — below that, stack instead.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 220) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _RingLegendRow(color: context.nocturneAccent, label: 'Active', value: active),
-                  const SizedBox(height: 10),
-                  _RingLegendRow(color: NocturnePriority.high, label: 'Overdue', value: overdue),
-                  const SizedBox(height: 10),
-                  _RingLegendRow(
-                    color: NocturneStatus.done,
-                    label: 'Completed',
-                    value: completed,
-                  ),
+                  Center(child: ring),
+                  const SizedBox(height: 16.8),
+                  legend,
                 ],
-              ),
-            ),
-          ],
+              );
+            }
+            return Row(
+              children: [
+                ring,
+                const SizedBox(width: 20),
+                Expanded(child: legend),
+              ],
+            );
+          },
         ),
       ),
     );
