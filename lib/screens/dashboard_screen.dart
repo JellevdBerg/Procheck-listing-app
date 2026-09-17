@@ -357,13 +357,15 @@ class ProjectsOverview extends StatelessWidget {
                 ],
               );
             }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: taskStatus),
-                const SizedBox(width: 11.2),
-                Expanded(child: workload),
-              ],
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: taskStatus),
+                  const SizedBox(width: 11.2),
+                  Expanded(child: workload),
+                ],
+              ),
             );
           },
         ),
@@ -386,7 +388,7 @@ List<_ActivityFeedItem> _buildActivityFeed(List<Project> projects) {
       for (final entry in project.activityLog)
         _ActivityFeedItem(entry: entry, project: project),
   ]..sort((a, b) => b.entry.timestamp.compareTo(a.entry.timestamp));
-  return items.take(8).toList();
+  return items.take(30).toList();
 }
 
 class _ActivityFeedItem {
@@ -820,7 +822,6 @@ class _WorkloadCard extends StatelessWidget {
               label: 'Overdue',
               value: overdueCount,
               color: NocturnePriority.high,
-              labelColor: NocturnePriority.high,
             ),
             const SizedBox(height: 10),
             _WorkloadRow(
@@ -833,7 +834,6 @@ class _WorkloadCard extends StatelessWidget {
               label: 'Due this week',
               value: dueThisWeekCount,
               color: NocturnePriority.med,
-              labelColor: NocturnePriority.med,
             ),
           ],
         ),
@@ -843,19 +843,11 @@ class _WorkloadCard extends StatelessWidget {
 }
 
 class _WorkloadRow extends StatelessWidget {
-  const _WorkloadRow({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.labelColor,
-  });
+  const _WorkloadRow({required this.label, required this.value, required this.color});
 
   final String label;
   final int value;
   final Color color;
-
-  /// See [_StatCard.labelColor].
-  final Color? labelColor;
 
   @override
   Widget build(BuildContext context) {
@@ -865,7 +857,7 @@ class _WorkloadRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(fontSize: 13, color: labelColor ?? tokens.neutral300),
+            style: TextStyle(fontSize: 13, color: tokens.neutral300),
           ),
         ),
         Text(
@@ -1065,6 +1057,10 @@ class _RecentActivityCard extends StatelessWidget {
 
   final List<_ActivityFeedItem> items;
 
+  /// Beyond this many entries the card scrolls instead of growing — keeps
+  /// it from pushing the rest of the Dashboard down as activity piles up.
+  static const _visibleRows = 5;
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -1085,7 +1081,19 @@ class _RecentActivityCard extends StatelessWidget {
                 ),
               )
             else
-              for (final item in items) _ActivityFeedRow(item: item),
+              SizedBox(
+                height: (_visibleRows * _ActivityFeedRow.height).clamp(
+                  0,
+                  items.length * _ActivityFeedRow.height,
+                ),
+                child: Scrollbar(
+                  child: ListView.builder(
+                    itemCount: items.length,
+                    itemExtent: _ActivityFeedRow.height,
+                    itemBuilder: (context, index) => _ActivityFeedRow(item: items[index]),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1097,6 +1105,10 @@ class _ActivityFeedRow extends StatelessWidget {
   const _ActivityFeedRow({required this.item});
 
   final _ActivityFeedItem item;
+
+  /// Fixed so [_RecentActivityCard] can size its scroll viewport to an
+  /// exact number of rows via `ListView.builder`'s `itemExtent`.
+  static const double height = 32;
 
   @override
   Widget build(BuildContext context) {
