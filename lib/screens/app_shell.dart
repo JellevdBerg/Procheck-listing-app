@@ -195,10 +195,18 @@ class _AppShellState extends ConsumerState<AppShell>
       bindings[activator] = _newTaskShortcut;
     }
 
-    return Focus(
-      autofocus: true,
-      child: CallbackShortcuts(
-        bindings: bindings,
+    // CallbackShortcuts' own internal Focus node has canRequestFocus: false
+    // (see the framework source) — it's a pass-through that only sees key
+    // events bubbling up from a descendant that actually holds focus. An
+    // autofocused Focus node has to sit *inside* it (wrapping the Scaffold)
+    // for that bubbling to ever reach it; putting the autofocus outside, as
+    // this used to, gives primary focus to a node CallbackShortcuts can
+    // never see key events from, since propagation only walks upward
+    // through ancestors, never down into children.
+    return CallbackShortcuts(
+      bindings: bindings,
+      child: Focus(
+        autofocus: true,
         child: Scaffold(
           backgroundColor: tokens.bg,
           body: Row(
