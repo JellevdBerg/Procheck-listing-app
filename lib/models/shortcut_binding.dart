@@ -5,8 +5,7 @@ import 'package:flutter/widgets.dart';
 /// Settings > Keyboard Shortcuts.
 enum ShortcutAction {
   newProject('New project'),
-  newTask('New task'),
-  undo('Undo');
+  newTask('New task');
 
   const ShortcutAction(this.label);
 
@@ -37,10 +36,6 @@ class ShortcutBinding {
     ),
     ShortcutAction.newTask: ShortcutBinding(
       key: LogicalKeyboardKey.keyT,
-      cmdOrCtrl: true,
-    ),
-    ShortcutAction.undo: ShortcutBinding(
-      key: LogicalKeyboardKey.keyZ,
       cmdOrCtrl: true,
     ),
   };
