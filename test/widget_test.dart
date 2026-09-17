@@ -491,8 +491,8 @@ void main() {
       // One "Dashboard" is the sidebar nav label (always shown), the other
       // is the screen's own headline.
       expect(find.text('Dashboard'), findsNWidgets(2));
-      // Once in the BY PROJECT breakdown, again in the PROJECT COMPLETION
-      // pane (as a "No tasks yet" row, since Rocket has none).
+      // Once in the Projects table, again in Recent Activity (its own
+      // "created this project" entry is the newest one at this point).
       expect(find.text('Rocket'), findsNWidgets(2));
     },
   );

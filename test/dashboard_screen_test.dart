@@ -96,86 +96,137 @@ void main() {
     });
   });
 
-  group('computeProjectCompletions', () {
+  group('isDueThisWeek', () {
+    test('due in 3 days is this week', () {
+      expect(isDueThisWeek(makeTask(dueDate: now.add(const Duration(days: 3))), now), isTrue);
+    });
+
+    test('due later today is this week', () {
+      expect(isDueThisWeek(makeTask(dueDate: now.add(const Duration(hours: 2))), now), isTrue);
+    });
+
+    test('due in 10 days is not this week', () {
+      expect(isDueThisWeek(makeTask(dueDate: now.add(const Duration(days: 10))), now), isFalse);
+    });
+
+    test('overdue is not this week', () {
+      expect(isDueThisWeek(makeTask(dueDate: now.subtract(const Duration(days: 1))), now), isFalse);
+    });
+
+    test('no due date is not this week', () {
+      expect(isDueThisWeek(makeTask(), now), isFalse);
+    });
+
+    test('a checked task is never this week, regardless of due date', () {
+      expect(
+        isDueThisWeek(makeTask(isChecked: true, dueDate: now.add(const Duration(days: 3))), now),
+        isFalse,
+      );
+    });
+  });
+
+  group('computeProjectSummaries', () {
     var counter = 0;
-    Project makeProject(String name) => Project(
-      id: 'p${counter++}_$name',
-      name: name,
-      createdAt: now,
-    );
-    Task makeProjectTask(String projectId, {bool isChecked = false}) => Task(
+    Project makeProject(String name) => Project(id: 'p${counter++}_$name', name: name, createdAt: now);
+    Task makeProjectTask(String projectId, {bool isChecked = false, DateTime? dueDate}) => Task(
       id: 't${counter++}',
       title: 'task',
       createdAt: now,
       projectId: projectId,
       isChecked: isChecked,
+      dueDate: dueDate,
     );
 
-    test('ranks projects by completion fraction, most complete first', () {
-      final alpha = makeProject('Alpha'); // 1/2 = 50%
-      final beta = makeProject('Beta'); // 2/2 = 100%
-      final gamma = makeProject('Gamma'); // 0/2 = 0%
+    test('open is total minus done, progress is done/total', () {
+      final project = makeProject('Alpha');
       final tasks = [
-        makeProjectTask(alpha.id, isChecked: true),
-        makeProjectTask(alpha.id),
-        makeProjectTask(beta.id, isChecked: true),
-        makeProjectTask(beta.id, isChecked: true),
-        makeProjectTask(gamma.id),
-        makeProjectTask(gamma.id),
+        makeProjectTask(project.id, isChecked: true),
+        makeProjectTask(project.id),
+        makeProjectTask(project.id),
       ];
 
-      final result = computeProjectCompletions([alpha, beta, gamma], tasks);
+      final result = computeProjectSummaries([project], tasks, now).single;
 
-      expect(
-        result.map((r) => r.project.name).toList(),
-        ['Beta', 'Alpha', 'Gamma'],
-      );
-      expect(result[0].fraction, 1.0);
-      expect(result[1].fraction, 0.5);
-      expect(result[2].fraction, 0.0);
+      expect(result.total, 3);
+      expect(result.done, 1);
+      expect(result.open, 2);
+      expect(result.progress, closeTo(1 / 3, 1e-9));
+      expect(result.hasOverdue, isFalse);
     });
 
-    test(
-      'a project with no tasks has a null fraction and sorts after every ranked one',
-      () {
-        final hasTasks = makeProject('Has Tasks');
-        final empty = makeProject('Empty');
-        final tasks = [makeProjectTask(hasTasks.id, isChecked: true)];
+    test('a project with no tasks has a null progress and zero open', () {
+      final project = makeProject('Empty');
 
-        final result = computeProjectCompletions([empty, hasTasks], tasks);
+      final result = computeProjectSummaries([project], const [], now).single;
 
-        expect(result.map((r) => r.project.name).toList(), ['Has Tasks', 'Empty']);
-        expect(result.first.fraction, 1.0);
-        expect(result.last.fraction, isNull);
-        expect(result.last.total, 0);
-      },
-    );
+      expect(result.total, 0);
+      expect(result.open, 0);
+      expect(result.progress, isNull);
+    });
 
-    test('ties in completion fraction break by project name', () {
-      final bravo = makeProject('Bravo');
-      final alpha = makeProject('Alpha');
+    test('an unchecked past-due task marks the project overdue', () {
+      final project = makeProject('Alpha');
       final tasks = [
-        makeProjectTask(bravo.id, isChecked: true),
-        makeProjectTask(alpha.id, isChecked: true),
+        makeProjectTask(project.id, dueDate: now.subtract(const Duration(days: 1))),
       ];
 
-      final result = computeProjectCompletions([bravo, alpha], tasks);
+      final result = computeProjectSummaries([project], tasks, now).single;
+
+      expect(result.hasOverdue, isTrue);
+    });
+
+    test('a checked past-due task does not mark the project overdue', () {
+      final project = makeProject('Alpha');
+      final tasks = [
+        makeProjectTask(project.id, isChecked: true, dueDate: now.subtract(const Duration(days: 1))),
+      ];
+
+      final result = computeProjectSummaries([project], tasks, now).single;
+
+      expect(result.hasOverdue, isFalse);
+    });
+
+    test('ranks an overdue project before a merely-busy one', () {
+      final busy = makeProject('Busy'); // 3 open, not overdue
+      final overdue = makeProject('Overdue'); // 1 open, overdue
+      final tasks = [
+        makeProjectTask(busy.id),
+        makeProjectTask(busy.id),
+        makeProjectTask(busy.id),
+        makeProjectTask(overdue.id, dueDate: now.subtract(const Duration(days: 1))),
+      ];
+
+      final result = computeProjectSummaries([busy, overdue], tasks, now);
+
+      expect(result.map((r) => r.project.name).toList(), ['Overdue', 'Busy']);
+    });
+
+    test('among non-overdue projects, more open work sorts first', () {
+      final quiet = makeProject('Quiet'); // 1 open
+      final busy = makeProject('Busy'); // 2 open
+      final tasks = [
+        makeProjectTask(quiet.id),
+        makeProjectTask(busy.id),
+        makeProjectTask(busy.id),
+      ];
+
+      final result = computeProjectSummaries([quiet, busy], tasks, now);
+
+      expect(result.map((r) => r.project.name).toList(), ['Busy', 'Quiet']);
+    });
+
+    test('ties break by project name', () {
+      final bravo = makeProject('Bravo');
+      final alpha = makeProject('Alpha');
+      final tasks = [makeProjectTask(bravo.id), makeProjectTask(alpha.id)];
+
+      final result = computeProjectSummaries([bravo, alpha], tasks, now);
 
       expect(result.map((r) => r.project.name).toList(), ['Alpha', 'Bravo']);
     });
 
-    test('multiple zero-task projects sort alphabetically among themselves', () {
-      final zulu = makeProject('Zulu');
-      final alphaEmpty = makeProject('Alpha');
-
-      final result = computeProjectCompletions([zulu, alphaEmpty], const []);
-
-      expect(result.map((r) => r.project.name).toList(), ['Alpha', 'Zulu']);
-      expect(result.every((r) => r.fraction == null), isTrue);
-    });
-
     test('returns nothing for an empty project list', () {
-      expect(computeProjectCompletions(const [], const []), isEmpty);
+      expect(computeProjectSummaries(const [], const [], now), isEmpty);
     });
   });
 
@@ -212,7 +263,7 @@ void main() {
 
     // Runs before any other test in this group adds data — see the note by
     // setUpAll above on why these tests share Hive state.
-    testWidgets('shows the empty message when nothing is active yet', (tester) async {
+    testWidgets('shows each section\'s own empty state when nothing exists yet', (tester) async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
@@ -224,11 +275,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('No active projects or unfiled tasks yet.'), findsOneWidget);
+      expect(find.text('No active projects yet.'), findsOneWidget);
+      expect(find.text('Nothing needs your attention right now.'), findsOneWidget);
+      expect(find.text('No recent activity yet.'), findsOneWidget);
     });
 
     testWidgets(
-      'counts open/pending correctly and skips an archived project',
+      'stat row and attention list reflect real data and skip an archived project',
       (tester) async {
         final container = ProviderContainer();
         addTearDown(container.dispose);
@@ -250,14 +303,6 @@ void main() {
           overdue.id,
           DateTime.now().subtract(const Duration(days: 1)),
         );
-        final scheduled = tasksNotifier.addBlankTask(
-          title: 'Scheduled in Launch',
-          projectId: launch.id,
-        );
-        tasksNotifier.setTaskDueDate(
-          scheduled.id,
-          DateTime.now().add(const Duration(days: 7)),
-        );
         // A task in the archived project must not count anywhere.
         final ignored = tasksNotifier.addBlankTask(
           title: 'In shelved project',
@@ -265,13 +310,6 @@ void main() {
         );
         tasksNotifier.setTaskDueDate(
           ignored.id,
-          DateTime.now().subtract(const Duration(days: 1)),
-        );
-        final unfiledOverdue = tasksNotifier.addBlankTask(
-          title: 'Unfiled overdue',
-        );
-        tasksNotifier.setTaskDueDate(
-          unfiledOverdue.id,
           DateTime.now().subtract(const Duration(days: 1)),
         );
 
@@ -283,58 +321,36 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Only the "Active projects" stat tile remains — the ambiguous
-        // "Open tasks"/"Pending tasks" tiles were removed.
-        String cardValue(IconData icon) {
-          final textWidgets = tester
+        // Scoped to a stat card's own Card ancestor via its exact label —
+        // the value Text sits before the label Text in that card's tree.
+        String statValueFor(String label) {
+          final cardFinder = find
+              .ancestor(of: find.text(label), matching: find.byType(Card))
+              .first;
+          final texts = tester
               .widgetList<Text>(
-                find.descendant(
-                  of: find.ancestor(
-                    of: find.byIcon(icon),
-                    matching: find.byType(Card),
-                  ),
-                  matching: find.byType(Text),
-                ),
+                find.descendant(of: cardFinder, matching: find.byType(Text)),
               )
               .toList();
-          return textWidgets.first.data!;
+          return texts.first.data!;
         }
 
-        expect(cardValue(Icons.folder_outlined), '1'); // Active projects
-        expect(find.text('Open tasks'), findsNothing);
-        expect(find.text('Pending tasks'), findsNothing);
+        expect(statValueFor('Active projects'), '1');
+        expect(statValueFor('Overdue'), '1');
 
-        // Per-project breakdown: Launch shows its own open/pending tags,
-        // the archived project never appears, and Unfiled shows up because
-        // it has an open task.
         expect(find.text('Shelved'), findsNothing);
-        expect(find.text('Unfiled'), findsNWidgets(2));
-        expect(find.text('1 open'), findsNWidgets(2)); // Launch row + Unfiled row
-        expect(find.text('1 pending'), findsOneWidget); // Launch row only
-
-        // "Launch" now appears three times: the BY PROJECT row, its overdue
-        // task's project label, and its completion-pane row.
-        expect(find.text('Launch'), findsNWidgets(3));
-
-        // Ring chart legend: overdue(2) = Launch's overdue + unfiled
-        // overdue, active(1) = Launch's future-dated task, none completed.
-        expect(find.text('Active'), findsOneWidget);
-        expect(find.text('Overdue'), findsOneWidget);
-        expect(find.text('Completed'), findsOneWidget);
-
-        // Overdue list: both overdue tasks show up with their project.
         expect(find.text('Overdue in Launch'), findsOneWidget);
-        expect(find.text('Unfiled overdue'), findsOneWidget);
+        expect(find.text('In shelved project'), findsNothing);
 
-        // Project completion: Launch has 0 of 2 tasks done. Unfiled tasks
-        // aren't a project, so they don't get a row here.
-        expect(find.text('Completion'), findsOneWidget);
-        expect(find.text('0%'), findsOneWidget);
+        // "Launch" shows up in the attention row, the Projects table row,
+        // and twice in Recent Activity (its own "created" entry plus the
+        // "added" entry for the overdue task).
+        expect(find.text('Launch'), findsNWidgets(4));
       },
     );
 
     testWidgets(
-      'tapping an overdue task opens its project via onOpenTask',
+      'tapping an attention-list task opens its project via onOpenTask',
       (tester) async {
         final container = ProviderContainer();
         addTearDown(container.dispose);
@@ -375,6 +391,45 @@ void main() {
 
         expect(openedProjectId, project.id);
         expect(openedTaskId, overdue.id);
+      },
+    );
+
+    testWidgets(
+      'tapping a Projects table row opens that project via onOpenProject',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        container.read(projectsProvider.notifier).addProject('Table Target');
+
+        String? openedProjectId;
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(
+              onOpenProject: (projectId, _) => openedProjectId = projectId,
+              onOpenTask: (_, _, _) {},
+            ),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // "Table Target" also shows up in Recent Activity (its own
+        // "created" entry) — that row isn't wrapped in an InkWell, so
+        // scoping to one that is isolates the actual table row to tap.
+        final tableRowText = find.descendant(
+          of: find.byType(InkWell),
+          matching: find.text('Table Target'),
+        );
+        await tester.ensureVisible(tableRowText);
+        await tester.pumpAndSettle();
+        await tester.tap(tableRowText);
+        await tester.pumpAndSettle();
+
+        expect(
+          openedProjectId,
+          container.read(projectsProvider).firstWhere((p) => p.name == 'Table Target').id,
+        );
       },
     );
   });

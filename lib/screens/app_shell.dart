@@ -348,7 +348,11 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.upcoming => const UpcomingScreen(),
       AppScreen.day => DayScreen(date: _selectedDay ?? DateTime.now()),
       AppScreen.templates => const TemplatesScreen(),
-      AppScreen.archived => ArchivedScreen(onOpenProject: _openProjectFromCard),
+      AppScreen.archived => ArchivedScreen(
+        onOpenProject: _openProjectFromCard,
+        onOpenTask: (projectId, taskId, cardContext) =>
+            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+      ),
       AppScreen.settings => const SettingsScreen(),
       AppScreen.dashboard => DashboardScreen(
         onOpenProject: _openProjectFromCard,
