@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/project.dart';
+import '../models/task.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
+import 'dashboard_screen.dart' show TaskOverviewSection;
 import 'empty_state.dart';
 
 /// Archived projects: a color dot, name + task count, and an "Unarchive"
@@ -53,6 +55,12 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Archived', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 16.8),
+          TaskOverviewSection(
+            projects: archived,
+            tasks: _archivedProjectTasks(tasks, archived),
+            now: DateTime.now(),
+          ),
           const SizedBox(height: 16.8),
           TextField(
             controller: _searchController,
@@ -145,4 +153,12 @@ class _ArchivedRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Tasks belonging to any of [archived]'s projects — unfiled tasks aren't
+/// "archived" in any sense, so (unlike the Dashboard's own overview, which
+/// includes them) they're left out of this scope entirely.
+List<Task> _archivedProjectTasks(List<Task> tasks, List<Project> archived) {
+  final archivedIds = archived.map((p) => p.id).toSet();
+  return tasks.where((t) => archivedIds.contains(t.projectId)).toList();
 }

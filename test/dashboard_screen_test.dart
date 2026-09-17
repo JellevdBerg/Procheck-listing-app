@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:procheck/data/hive_setup.dart';
+import 'package:procheck/models/project.dart';
 import 'package:procheck/models/task.dart';
 import 'package:procheck/providers/projects_provider.dart';
 import 'package:procheck/providers/tasks_provider.dart';
@@ -95,6 +96,89 @@ void main() {
     });
   });
 
+  group('computeProjectCompletions', () {
+    var counter = 0;
+    Project makeProject(String name) => Project(
+      id: 'p${counter++}_$name',
+      name: name,
+      createdAt: now,
+    );
+    Task makeProjectTask(String projectId, {bool isChecked = false}) => Task(
+      id: 't${counter++}',
+      title: 'task',
+      createdAt: now,
+      projectId: projectId,
+      isChecked: isChecked,
+    );
+
+    test('ranks projects by completion fraction, most complete first', () {
+      final alpha = makeProject('Alpha'); // 1/2 = 50%
+      final beta = makeProject('Beta'); // 2/2 = 100%
+      final gamma = makeProject('Gamma'); // 0/2 = 0%
+      final tasks = [
+        makeProjectTask(alpha.id, isChecked: true),
+        makeProjectTask(alpha.id),
+        makeProjectTask(beta.id, isChecked: true),
+        makeProjectTask(beta.id, isChecked: true),
+        makeProjectTask(gamma.id),
+        makeProjectTask(gamma.id),
+      ];
+
+      final result = computeProjectCompletions([alpha, beta, gamma], tasks);
+
+      expect(
+        result.map((r) => r.project.name).toList(),
+        ['Beta', 'Alpha', 'Gamma'],
+      );
+      expect(result[0].fraction, 1.0);
+      expect(result[1].fraction, 0.5);
+      expect(result[2].fraction, 0.0);
+    });
+
+    test(
+      'a project with no tasks has a null fraction and sorts after every ranked one',
+      () {
+        final hasTasks = makeProject('Has Tasks');
+        final empty = makeProject('Empty');
+        final tasks = [makeProjectTask(hasTasks.id, isChecked: true)];
+
+        final result = computeProjectCompletions([empty, hasTasks], tasks);
+
+        expect(result.map((r) => r.project.name).toList(), ['Has Tasks', 'Empty']);
+        expect(result.first.fraction, 1.0);
+        expect(result.last.fraction, isNull);
+        expect(result.last.total, 0);
+      },
+    );
+
+    test('ties in completion fraction break by project name', () {
+      final bravo = makeProject('Bravo');
+      final alpha = makeProject('Alpha');
+      final tasks = [
+        makeProjectTask(bravo.id, isChecked: true),
+        makeProjectTask(alpha.id, isChecked: true),
+      ];
+
+      final result = computeProjectCompletions([bravo, alpha], tasks);
+
+      expect(result.map((r) => r.project.name).toList(), ['Alpha', 'Bravo']);
+    });
+
+    test('multiple zero-task projects sort alphabetically among themselves', () {
+      final zulu = makeProject('Zulu');
+      final alphaEmpty = makeProject('Alpha');
+
+      final result = computeProjectCompletions([zulu, alphaEmpty], const []);
+
+      expect(result.map((r) => r.project.name).toList(), ['Alpha', 'Zulu']);
+      expect(result.every((r) => r.fraction == null), isTrue);
+    });
+
+    test('returns nothing for an empty project list', () {
+      expect(computeProjectCompletions(const [], const []), isEmpty);
+    });
+  });
+
   group('DashboardScreen', () {
     late Directory tempDir;
 
@@ -133,7 +217,10 @@ void main() {
       addTearDown(container.dispose);
 
       await tester.pumpWidget(
-        wrap(DashboardScreen(onOpenProject: (_, _) {}), container),
+        wrap(
+          DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+          container,
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -190,14 +277,14 @@ void main() {
 
         await tester.pumpWidget(
           wrap(
-            DashboardScreen(onOpenProject: (_, _) {}),
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
             container,
           ),
         );
         await tester.pumpAndSettle();
 
-        // Stat cards — scoped by the card's own icon, since "1" alone
-        // appears on more than one card (active projects, pending tasks).
+        // Only the "Active projects" stat tile remains — the ambiguous
+        // "Open tasks"/"Pending tasks" tiles were removed.
         String cardValue(IconData icon) {
           final textWidgets = tester
               .widgetList<Text>(
@@ -214,21 +301,20 @@ void main() {
         }
 
         expect(cardValue(Icons.folder_outlined), '1'); // Active projects
-        expect(
-          cardValue(Icons.error_outline),
-          '2',
-        ); // Open tasks: Launch's overdue + unfiled overdue
-        expect(cardValue(Icons.schedule), '1'); // Pending tasks
+        expect(find.text('Open tasks'), findsNothing);
+        expect(find.text('Pending tasks'), findsNothing);
 
         // Per-project breakdown: Launch shows its own open/pending tags,
         // the archived project never appears, and Unfiled shows up because
-        // it has an open task. Each also appears a second time as the
-        // associated-project label on its overdue task's row.
-        expect(find.text('Launch'), findsNWidgets(2));
+        // it has an open task.
         expect(find.text('Shelved'), findsNothing);
         expect(find.text('Unfiled'), findsNWidgets(2));
         expect(find.text('1 open'), findsNWidgets(2)); // Launch row + Unfiled row
         expect(find.text('1 pending'), findsOneWidget); // Launch row only
+
+        // "Launch" now appears three times: the BY PROJECT row, its overdue
+        // task's project label, and its completion-pane row.
+        expect(find.text('Launch'), findsNWidgets(3));
 
         // Ring chart legend: overdue(2) = Launch's overdue + unfiled
         // overdue, active(1) = Launch's future-dated task, none completed.
@@ -239,6 +325,56 @@ void main() {
         // Overdue list: both overdue tasks show up with their project.
         expect(find.text('Overdue in Launch'), findsOneWidget);
         expect(find.text('Unfiled overdue'), findsOneWidget);
+
+        // Project completion: Launch has 0 of 2 tasks done. Unfiled tasks
+        // aren't a project, so they don't get a row here.
+        expect(find.text('Completion'), findsOneWidget);
+        expect(find.text('0%'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping an overdue task opens its project via onOpenTask',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container
+            .read(projectsProvider.notifier)
+            .addProject('ClickTarget');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        final overdue = tasksNotifier.addBlankTask(
+          title: 'Click this overdue task',
+          projectId: project.id,
+        );
+        tasksNotifier.setTaskDueDate(
+          overdue.id,
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+
+        String? openedProjectId;
+        String? openedTaskId;
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(
+              onOpenProject: (_, _) {},
+              onOpenTask: (projectId, taskId, _) {
+                openedProjectId = projectId;
+                openedTaskId = taskId;
+              },
+            ),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Click this overdue task'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Click this overdue task'));
+        await tester.pumpAndSettle();
+
+        expect(openedProjectId, project.id);
+        expect(openedTaskId, overdue.id);
       },
     );
   });
