@@ -7,15 +7,23 @@ import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
-import 'dashboard_screen.dart' show TaskOverviewSection;
+import 'dashboard_screen.dart' show ProjectsOverview;
 import 'empty_state.dart';
 
-/// Archived projects: a color dot, name + task count, and an "Unarchive"
-/// ghost button. Search filters by name, same as the Projects screen.
+/// Archived projects: the same overview the Dashboard shows (stat row,
+/// Today & Needs Attention, Task Status, Workload, Projects table, Recent
+/// Activity) scoped to archived projects, above a color dot/name/task-count
+/// list with an "Unarchive" ghost button per row. Search filters that list
+/// by name, same as the Projects screen.
 class ArchivedScreen extends ConsumerStatefulWidget {
-  const ArchivedScreen({super.key, required this.onOpenProject});
+  const ArchivedScreen({super.key, required this.onOpenProject, required this.onOpenTask});
 
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
+
+  /// Like [onOpenProject], but for navigating in from a specific task in
+  /// the overview's Today & Needs Attention list.
+  final void Function(String projectId, String taskId, BuildContext rowContext)
+  onOpenTask;
 
   @override
   ConsumerState<ArchivedScreen> createState() => _ArchivedScreenState();
@@ -56,10 +64,15 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
         children: [
           Text('Archived', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 16.8),
-          TaskOverviewSection(
+          ProjectsOverview(
             projects: archived,
             tasks: _archivedProjectTasks(tasks, archived),
             now: DateTime.now(),
+            workspaceId: '${ref.watch(settingsProvider).currentWorkspaceId}_archive',
+            projectsStatLabel: 'Archived projects',
+            emptyProjectsMessage: 'No archived projects yet.',
+            onOpenProject: widget.onOpenProject,
+            onOpenTask: widget.onOpenTask,
           ),
           const SizedBox(height: 16.8),
           TextField(
