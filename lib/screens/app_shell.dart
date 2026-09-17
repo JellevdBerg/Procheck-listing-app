@@ -74,6 +74,7 @@ class _AppShellState extends ConsumerState<AppShell>
     _screen = switch (settings.defaultLanding) {
       LandingScreenOption.projects => AppScreen.projects,
       LandingScreenOption.templates => AppScreen.templates,
+      LandingScreenOption.dashboard => AppScreen.dashboard,
       LandingScreenOption.lastViewed =>
         AppScreen.values[settings.lastViewedScreenIndex.clamp(
           0,
