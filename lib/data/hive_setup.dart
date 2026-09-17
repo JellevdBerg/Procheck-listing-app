@@ -17,6 +17,7 @@ const projectBoxName = 'projects';
 const taskBoxName = 'tasks';
 const taskTemplateBoxName = 'task_templates';
 const settingsBoxName = 'settings';
+const progressHistoryBoxName = 'progress_history';
 
 /// Hive box files that live directly in the data directory (each has a
 /// matching `.lock` file), used when migrating data to a new location.
@@ -54,6 +55,7 @@ Future<void> setUpHive({String? testDirectoryPath}) async {
     Hive.openBox<Task>(taskBoxName),
     Hive.openBox<TaskTemplate>(taskTemplateBoxName),
     Hive.openBox(settingsBoxName),
+    Hive.openBox<double>(progressHistoryBoxName),
   ]);
 }
 
