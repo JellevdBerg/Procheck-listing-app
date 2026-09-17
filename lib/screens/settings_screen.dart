@@ -201,12 +201,19 @@ class _AccentSwatch extends StatelessWidget {
               : null,
         ),
         child: selected
-            ? const Icon(Icons.check, color: Colors.white, size: 14)
+            ? Icon(Icons.check, color: _onSwatch(color), size: 14)
             : null,
       ),
     );
   }
 }
+
+/// Checkmark color for a swatch of [background] — white reads on a dark
+/// swatch, black on a light one. The accent palette (and any custom color a
+/// user picks) skews pastel/light, where a hardcoded white checkmark all but
+/// disappears.
+Color _onSwatch(Color background) =>
+    background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
 
 class _CustomAccentSwatch extends StatelessWidget {
   const _CustomAccentSwatch({
@@ -249,8 +256,8 @@ class _CustomAccentSwatch extends StatelessWidget {
               ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 2)
               : Border.all(color: Theme.of(context).dividerColor),
         ),
-        child: selected
-            ? const Icon(Icons.check, color: Colors.white, size: 14)
+        child: selected && color != null
+            ? Icon(Icons.check, color: _onSwatch(color!), size: 14)
             : null,
       ),
     );
