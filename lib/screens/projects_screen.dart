@@ -7,7 +7,6 @@ import '../models/task.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
-import '../providers/undo_provider.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import '../widgets/pop_out_removal.dart';
@@ -172,16 +171,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                   builder: (context, triggerRemoval) => TaskTile(
                     task: unfiledTasks[i],
                     onDelete: triggerRemoval,
-                    // deleteTask (triggered by triggerRemoval, just above)
-                    // already pushed this onto the undo stack — routing the
-                    // button through the same stack, rather than a direct
-                    // restoreTask call, keeps this in sync with Ctrl+Z
-                    // instead of risking a stale second restore of a task
-                    // Ctrl+Z already brought back.
                     onExplicitDelete: () => widget.onShowUndo(
                       label: '"${unfiledTasks[i].title}" deleted',
-                      onUndo: () =>
-                          ref.read(undoStackProvider.notifier).undoLast(),
+                      onUndo: () => ref
+                          .read(tasksProvider.notifier)
+                          .restoreTask(unfiledTasks[i]),
                     ),
                     autoRemoveWhenChecked: true,
                     reorderIndex: i,
