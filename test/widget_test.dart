@@ -565,6 +565,74 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'Ctrl+Z undoes multiple consecutive deletions, not just the last one',
+    (tester) async {
+      // Regression coverage for the real undo *history* behind Ctrl+Z (see
+      // undo_provider.dart) — unlike the floating "Undo" button, which only
+      // ever offers the single most recent deletion, repeated Ctrl+Z should
+      // keep walking back through however many deletions came before it.
+      await pumpApp(tester);
+
+      // This suite never resets Hive between tests (see the note by
+      // pumpApp above), so by this point the project grid accumulated from
+      // earlier tests can be tall enough that "New task" — below the grid
+      // in the page's own ListView — isn't built yet. Scroll it into view
+      // first, same as the drag-reorder test below.
+      await tester.scrollUntilVisible(
+        find.text('New task'),
+        300,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('projects-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+
+      await createTask(tester, 'Undo target A');
+      await createTask(tester, 'Undo target B');
+
+      Future<void> deleteUnfiledTask(String title) async {
+        final rowFinder = find.ancestor(
+          of: find.text(title),
+          matching: find.byType(ListTile),
+        );
+        final deleteIcon = find.descendant(
+          of: rowFinder,
+          matching: find.byIcon(Icons.delete_outline),
+        );
+        await tester.ensureVisible(deleteIcon);
+        await tester.pumpAndSettle();
+        await tester.tap(deleteIcon);
+        await tester.pumpAndSettle();
+      }
+
+      await deleteUnfiledTask('Undo target A');
+      await deleteUnfiledTask('Undo target B');
+
+      expect(find.text('Undo target A'), findsNothing);
+      expect(find.text('Undo target B'), findsNothing);
+
+      Future<void> pressCtrlZ() async {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+      }
+
+      // First Ctrl+Z brings back the most recently deleted one (B) only.
+      await pressCtrlZ();
+      expect(find.text('Undo target B'), findsOneWidget);
+      expect(find.text('Undo target A'), findsNothing);
+
+      // A second Ctrl+Z walks back further, restoring A too.
+      await pressCtrlZ();
+      expect(find.text('Undo target A'), findsOneWidget);
+      expect(find.text('Undo target B'), findsOneWidget);
+    },
+  );
+
   testWidgets('dragging an unfiled task by its handle reorders it', (
     tester,
   ) async {

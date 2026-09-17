@@ -10,6 +10,7 @@ import '../models/project.dart';
 import '../models/project_comment.dart';
 import 'settings_provider.dart';
 import 'tasks_provider.dart';
+import 'undo_provider.dart';
 
 final projectsProvider = StateNotifierProvider<ProjectsNotifier, List<Project>>(
   (ref) {
@@ -209,10 +210,30 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   }
 
   void deleteProject(String id) {
+    final project = _box.get(id);
+    if (project == null) return;
+    // Captured before the cascade below removes them from state, so the
+    // undo entry can bring them back along with the project itself.
+    final cascadedTasks = _ref
+        .read(tasksProvider)
+        .where((t) => t.projectId == id)
+        .toList();
     // Deleting a project takes its tasks (and their subtasks) with it.
     _ref.read(tasksProvider.notifier).deleteTasksInProject(id);
     unawaited(_box.delete(id));
     state = state.where((p) => p.id != id).toList();
+    _ref
+        .read(undoStackProvider.notifier)
+        .push(ProjectDeletionEntry(project, cascadedTasks));
+  }
+
+  /// Re-adds a previously-deleted [project] exactly as it was — used by the
+  /// undo stack to reverse [deleteProject]. Its cascade-deleted tasks are
+  /// restored separately, by the same undo entry.
+  void restoreProject(Project project) {
+    unawaited(_box.put(project.id, project));
+    state = [...state, project];
+    _sortState();
   }
 
   /// How many projects belong to [workspaceId] — shown in the "remove

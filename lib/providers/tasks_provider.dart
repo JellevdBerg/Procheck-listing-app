@@ -14,6 +14,7 @@ import '../models/task_priority.dart';
 import '../models/task_template.dart';
 import 'projects_provider.dart';
 import 'settings_provider.dart';
+import 'undo_provider.dart';
 
 final tasksProvider = StateNotifierProvider<TasksNotifier, List<Task>>((ref) {
   return TasksNotifier(ref);
@@ -198,6 +199,9 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
     unawaited(_box.delete(taskId));
     state = state.where((t) => t.id != taskId).toList();
+    if (task != null) {
+      _ref.read(undoStackProvider.notifier).push(TaskDeletionEntry(task));
+    }
   }
 
   /// Re-adds a previously-deleted [task] exactly as it was — used to undo an
