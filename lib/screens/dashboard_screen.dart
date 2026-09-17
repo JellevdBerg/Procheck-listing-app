@@ -175,7 +175,7 @@ class DashboardScreen extends ConsumerWidget {
                               if (i > 0) const Divider(height: 1),
                               _OverdueTaskRow(
                                 task: overdueTasks[i],
-                                projectName: projectById[overdueTasks[i].projectId]?.name,
+                                project: projectById[overdueTasks[i].projectId],
                                 dateFormat: dateFormat,
                               ),
                             ],
@@ -483,16 +483,18 @@ class _RingPainter extends CustomPainter {
 }
 
 /// A single overdue task's row in the Dashboard's OVERDUE list, showing
-/// which project (or "Unfiled") it belongs to and how it's overdue.
+/// which project (or "Unfiled") it belongs to — via the same colored dot
+/// the BY PROJECT list uses, so it reads as a project tag rather than
+/// looking like a second line of plain description — and how it's overdue.
 class _OverdueTaskRow extends StatelessWidget {
   const _OverdueTaskRow({
     required this.task,
-    required this.projectName,
+    required this.project,
     required this.dateFormat,
   });
 
   final Task task;
-  final String? projectName;
+  final Project? project;
   final DateFormatOption dateFormat;
 
   @override
@@ -515,9 +517,26 @@ class _OverdueTaskRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  projectName ?? 'Unfiled',
-                  style: TextStyle(fontSize: 12, color: tokens.neutral400),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: project == null
+                            ? tokens.neutral500
+                            : accentPalette[project!.colorIndex],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      project?.name ?? 'Unfiled',
+                      style: TextStyle(fontSize: 12, color: tokens.neutral400),
+                    ),
+                  ],
                 ),
               ],
             ),
