@@ -499,8 +499,14 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
+    // Only a card with a semantic label color (Overdue, Due this week) gets
+    // a matching background wash — a plain neutral stat stays plain.
+    final tint = labelColor == null
+        ? null
+        : Color.alphaBlend(labelColor!.withValues(alpha: 0.10), tokens.surface);
     return Card(
       margin: EdgeInsets.zero,
+      color: tint,
       child: Padding(
         padding: const EdgeInsets.all(16.8),
         child: Column(
