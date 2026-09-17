@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,35 +19,103 @@ import '../widgets/text_prompt_dialog.dart';
 /// open — header (back/edit/archive/delete/new-task), a task list, and an
 /// Activity + Comments side panel. Not a route: the sidebar stays visible
 /// because this is just a widget stacked over the main content area.
-class ProjectDetailOverlay extends ConsumerWidget {
+class ProjectDetailOverlay extends ConsumerStatefulWidget {
   const ProjectDetailOverlay({
     super.key,
     required this.projectId,
     required this.onClose,
+    this.highlightTaskId,
   });
 
   final String projectId;
   final VoidCallback onClose;
 
+  /// When set, the matching task is scrolled into view and briefly
+  /// highlighted once this overlay is showing — used when navigating in
+  /// from a specific task (e.g. the Dashboard's overdue list) rather than
+  /// the project itself.
+  final String? highlightTaskId;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProjectDetailOverlay> createState() =>
+      _ProjectDetailOverlayState();
+}
+
+class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
+  final Map<String, GlobalKey> _taskKeys = {};
+  String? _highlightedTaskId;
+  Timer? _highlightTimer;
+  bool _scrolledToHighlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _highlightedTaskId = widget.highlightTaskId;
+    _armHighlightTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProjectDetailOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.highlightTaskId != oldWidget.highlightTaskId) {
+      setState(() {
+        _highlightedTaskId = widget.highlightTaskId;
+        _scrolledToHighlight = false;
+      });
+      _armHighlightTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    super.dispose();
+  }
+
+  void _armHighlightTimer() {
+    _highlightTimer?.cancel();
+    if (_highlightedTaskId == null) return;
+    _highlightTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _highlightedTaskId = null);
+    });
+  }
+
+  void _scrollToHighlightIfNeeded() {
+    if (_scrolledToHighlight || widget.highlightTaskId == null) return;
+    final key = _taskKeys[widget.highlightTaskId];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final taskContext = key?.currentContext;
+      if (taskContext == null || !mounted) return;
+      Scrollable.ensureVisible(
+        taskContext,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        alignment: 0.5,
+      );
+    });
+    _scrolledToHighlight = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final projects = ref.watch(projectsProvider);
-    final matches = projects.where((p) => p.id == projectId);
+    final matches = projects.where((p) => p.id == widget.projectId);
     final project = matches.isEmpty ? null : matches.first;
 
     if (project == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => onClose());
+      WidgetsBinding.instance.addPostFrameCallback((_) => widget.onClose());
       return const SizedBox.shrink();
     }
 
     final tasks = ref
         .watch(tasksProvider)
-        .where((t) => t.projectId == projectId)
+        .where((t) => t.projectId == widget.projectId)
         .toList();
     final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final accentColor = accentPalette[project.colorIndex];
     final doneCount = tasks.where((t) => t.isChecked).length;
     final progress = tasks.isEmpty ? 0.0 : doneCount / tasks.length;
+    _scrollToHighlightIfNeeded();
 
     return Column(
       children: [
@@ -55,7 +125,7 @@ class ProjectDetailOverlay extends ConsumerWidget {
           doneCount: doneCount,
           totalCount: tasks.length,
           progress: progress,
-          onClose: onClose,
+          onClose: widget.onClose,
         ),
         Expanded(
           child: LayoutBuilder(
@@ -92,18 +162,31 @@ class ProjectDetailOverlay extends ConsumerWidget {
                             },
                             itemBuilder: (context, index) {
                               final task = tasks[index];
+                              final highlighted =
+                                  task.id == _highlightedTaskId;
                               return PopOutRemoval(
-                                key: ValueKey(task.id),
+                                key: _taskKeys.putIfAbsent(
+                                  task.id,
+                                  () => GlobalKey(),
+                                ),
                                 reduceMotion: reduceMotion,
                                 shrinkWidth: false,
                                 onRemoved: () => ref
                                     .read(tasksProvider.notifier)
                                     .deleteTask(task.id),
                                 builder: (context, triggerRemoval) =>
-                                    TaskTile(
-                                      task: task,
-                                      onDelete: triggerRemoval,
-                                      reorderIndex: index,
+                                    AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      color: highlighted
+                                          ? accentColor.withValues(alpha: 0.16)
+                                          : Colors.transparent,
+                                      child: TaskTile(
+                                        task: task,
+                                        onDelete: triggerRemoval,
+                                        reorderIndex: index,
+                                      ),
                                     ),
                               );
                             },

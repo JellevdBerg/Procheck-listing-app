@@ -60,6 +60,7 @@ class _AppShellState extends ConsumerState<AppShell>
 
   String? _detailProjectId;
   Rect? _originRect;
+  String? _highlightTaskId;
   late final AnimationController _morphController = AnimationController(
     duration: const Duration(milliseconds: 320),
     reverseDuration: const Duration(milliseconds: 260),
@@ -120,11 +121,16 @@ class _AppShellState extends ConsumerState<AppShell>
     setState(() => _pendingUndo = null);
   }
 
-  void _openProjectDetail(String projectId, {Rect? originRect}) {
+  void _openProjectDetail(
+    String projectId, {
+    Rect? originRect,
+    String? highlightTaskId,
+  }) {
     final reduceMotion = ref.read(settingsProvider).reduceMotion;
     setState(() {
       _detailProjectId = projectId;
       _originRect = originRect;
+      _highlightTaskId = highlightTaskId;
     });
     if (reduceMotion) {
       _morphController.value = 1;
@@ -145,7 +151,16 @@ class _AppShellState extends ConsumerState<AppShell>
     });
   }
 
-  void _openProjectFromCard(String projectId, BuildContext cardContext) {
+  /// Opens [projectId]'s detail overlay, card-morphing from [cardContext]'s
+  /// rect. Passing [taskId] additionally scrolls to and briefly highlights
+  /// that task once the overlay is open — used when navigating in from a
+  /// specific task (e.g. the Dashboard's overdue list) rather than the
+  /// project itself.
+  void _openProjectFromCard(
+    String projectId,
+    BuildContext cardContext, {
+    String? taskId,
+  }) {
     final cardBox = cardContext.findRenderObject() as RenderBox?;
     final mainBox =
         _mainAreaKey.currentContext?.findRenderObject() as RenderBox?;
@@ -155,7 +170,7 @@ class _AppShellState extends ConsumerState<AppShell>
       rect = origin & cardBox.size;
     }
     ref.read(projectsProvider.notifier).touchProject(projectId);
-    _openProjectDetail(projectId, originRect: rect);
+    _openProjectDetail(projectId, originRect: rect, highlightTaskId: taskId);
   }
 
   void _openFavoriteProject(Project project) {
@@ -318,6 +333,7 @@ class _AppShellState extends ConsumerState<AppShell>
       child: ProjectDetailOverlay(
         projectId: _detailProjectId!,
         onClose: _closeProjectDetail,
+        highlightTaskId: _highlightTaskId,
       ),
     );
   }
@@ -334,7 +350,11 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.templates => const TemplatesScreen(),
       AppScreen.archived => ArchivedScreen(onOpenProject: _openProjectFromCard),
       AppScreen.settings => const SettingsScreen(),
-      AppScreen.dashboard => DashboardScreen(onOpenProject: _openProjectFromCard),
+      AppScreen.dashboard => DashboardScreen(
+        onOpenProject: _openProjectFromCard,
+        onOpenTask: (projectId, taskId, cardContext) =>
+            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+      ),
     };
   }
 }
