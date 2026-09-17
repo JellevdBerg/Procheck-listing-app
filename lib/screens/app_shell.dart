@@ -7,6 +7,7 @@ import '../models/project.dart';
 import '../models/shortcut_binding.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/undo_provider.dart';
 import '../theme/nocturne_theme.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/sidebar/app_sidebar.dart';
@@ -196,6 +197,16 @@ class _AppShellState extends ConsumerState<AppShell>
     await showCreateTaskSheet(context);
   }
 
+  /// Pops the most recent deletion off the undo stack (project or task —
+  /// see undo_provider.dart), restoring it fully. Repeated Ctrl+Z walks
+  /// back through consecutive deletions, unlike the floating "Undo" button
+  /// below, which only ever offers the single most recent one before it
+  /// expires.
+  void _undoShortcut() {
+    final message = ref.read(undoStackProvider.notifier).undoLast();
+    if (message != null) _showToast(message);
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
@@ -209,6 +220,10 @@ class _AppShellState extends ConsumerState<AppShell>
     for (final activator
         in settings.shortcutFor(ShortcutAction.newTask).toActivators()) {
       bindings[activator] = _newTaskShortcut;
+    }
+    for (final activator
+        in settings.shortcutFor(ShortcutAction.undo).toActivators()) {
+      bindings[activator] = _undoShortcut;
     }
 
     // CallbackShortcuts' own internal Focus node has canRequestFocus: false
