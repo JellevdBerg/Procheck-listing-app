@@ -313,7 +313,7 @@ void main() {
         expect(find.text('1 pending'), findsOneWidget); // Launch row only
 
         // "Launch" now appears three times: the BY PROJECT row, its overdue
-        // task's project label, and its PROJECT COMPLETION row.
+        // task's project label, and its completion-pane row.
         expect(find.text('Launch'), findsNWidgets(3));
 
         // Ring chart legend: overdue(2) = Launch's overdue + unfiled
@@ -328,7 +328,7 @@ void main() {
 
         // Project completion: Launch has 0 of 2 tasks done. Unfiled tasks
         // aren't a project, so they don't get a row here.
-        expect(find.text('PROJECT COMPLETION'), findsOneWidget);
+        expect(find.text('Completion'), findsOneWidget);
         expect(find.text('0%'), findsOneWidget);
       },
     );

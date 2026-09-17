@@ -75,6 +75,46 @@ List<ProjectCompletion> computeProjectCompletions(
   return [...ranked, ...unranked];
 }
 
+/// Shared target height for the Dashboard's top row (active-projects count,
+/// ring chart, project completion pane) and for [TaskOverviewSection]'s own
+/// ring-chart/completion-pane pair, so all of them occupy the same vertical
+/// space instead of each sizing to its own content.
+const double _kOverviewCardHeight = 240;
+
+/// A small in-card header — icon plus a short label — used instead of a
+/// separate section title sitting above the card, so each pane says what
+/// it is on its own.
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: tokens.neutral400),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.06,
+              color: tokens.neutral400,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// An overview of every active (non-archived) project and its unfiled
 /// tasks: a project count, the active/overdue/completed ring chart, a
 /// per-project completion ranking, an overdue-tasks list, and a per-project
@@ -163,17 +203,19 @@ class DashboardScreen extends ConsumerWidget {
           // original stacked layout instead of overflowing.
           LayoutBuilder(
             builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 720;
               final statCard = _StatCard(
                 icon: Icons.folder_outlined,
                 label: 'Active projects',
                 value: activeProjects.length,
+                height: wide ? _kOverviewCardHeight : null,
               );
               final overview = TaskOverviewSection(
                 projects: activeProjects,
                 tasks: relevantTasks,
                 now: now,
               );
-              if (constraints.maxWidth < 720) {
+              if (!wide) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -296,19 +338,26 @@ class TaskOverviewSection extends StatelessWidget {
         .length;
     final activeCount = tasks.length - completedCount - overdueCount;
     final completions = computeProjectCompletions(projects, tasks);
-    final ring = _TaskStatusRing(
-      active: activeCount,
-      overdue: overdueCount,
-      completed: completedCount,
-    );
-    final pane = _ProjectCompletionPane(completions: completions);
 
     // The ring chart's own row (the ring graphic plus its legend) needs
     // ~220px minimum before the legend gets squashed to nothing, so below
-    // that this falls back to stacking the two instead of overflowing.
+    // that this falls back to stacking the two instead of overflowing —
+    // and, since they're stacked rather than side by side, matching their
+    // heights isn't meaningful there either.
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 420) {
+        final wide = constraints.maxWidth >= 420;
+        final ring = _TaskStatusRing(
+          active: activeCount,
+          overdue: overdueCount,
+          completed: completedCount,
+          height: wide ? _kOverviewCardHeight : null,
+        );
+        final pane = _ProjectCompletionPane(
+          completions: completions,
+          height: wide ? _kOverviewCardHeight : null,
+        );
+        if (!wide) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [ring, const SizedBox(height: 22.4), pane],
@@ -332,45 +381,53 @@ class _StatCard extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.height,
   });
 
   final IconData icon;
   final String label;
   final int value;
 
+  /// When set, matches this to the Dashboard's ring chart and project
+  /// completion pane so the row of three reads as one set instead of three
+  /// differently-sized cards.
+  final double? height;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
-    return Card(
+    final content = Row(
+      children: [
+        Icon(icon, size: 22, color: tokens.neutral400),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$value',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: tokens.neutral400),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final card = Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16.8),
-        child: Row(
-          children: [
-            Icon(icon, size: 22, color: tokens.neutral400),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$value',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: tokens.neutral400),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: height == null ? content : Center(child: content),
       ),
     );
+    return height == null ? card : SizedBox(height: height, child: card);
   }
 }
 
@@ -445,46 +502,94 @@ class _ProjectRow {
 /// complete first — kept in its own bounded, independently-scrollable list
 /// so it doesn't have to grow (or shrink) the whole page around it.
 class _ProjectCompletionPane extends StatelessWidget {
-  const _ProjectCompletionPane({required this.completions});
+  const _ProjectCompletionPane({required this.completions, this.height});
 
   final List<ProjectCompletion> completions;
 
+  /// See [_StatCard.height].
+  final double? height;
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const NocturneSectionLabel('PROJECT COMPLETION'),
-        const SizedBox(height: 8),
-        if (completions.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'No active projects yet.',
-              style: Theme.of(context).textTheme.bodyMedium,
+    const header = _CardHeader(icon: Icons.task_alt, label: 'Completion');
+
+    if (completions.isEmpty) {
+      final empty = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          header,
+          const SizedBox(height: 12),
+          Text(
+            'No active projects yet.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      );
+      final card = Card(
+        margin: EdgeInsets.zero,
+        child: Padding(padding: const EdgeInsets.all(16.8), child: empty),
+      );
+      return height == null ? card : SizedBox(height: height, child: card);
+    }
+
+    final list = ListView.builder(
+      itemCount: completions.length,
+      itemBuilder: (context, i) =>
+          _ProjectCompletionRow(completion: completions[i]),
+    );
+
+    if (height != null) {
+      // A fixed height flows down to the list via Expanded, so it fills —
+      // and, past that, independently scrolls — the same vertical space as
+      // the ring chart and stat card beside it.
+      return SizedBox(
+        height: height,
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(16.8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                header,
+                const SizedBox(height: 12),
+                Expanded(child: list),
+              ],
             ),
-          )
-        else
-          Card(
-            margin: EdgeInsets.zero,
-            // Sized to its content up to a cap, rather than always
-            // reserving a fixed height — a couple of projects don't leave a
-            // slab of dead space, and once there are enough to exceed the
-            // cap this becomes a real, independent scroll view (its own
-            // Scrollable, distinct from the page's) instead of growing the
-            // page around it.
-            child: ConstrainedBox(
+          ),
+        ),
+      );
+    }
+
+    // No fixed height to match (e.g. the narrow, stacked layout) — size to
+    // content up to a cap instead of reserving a fixed height regardless:
+    // a couple of projects don't leave a slab of dead space, and once
+    // there are enough to exceed the cap this becomes a real, independent
+    // scroll view (its own Scrollable, distinct from the page's) instead
+    // of growing the page around it.
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16.8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            header,
+            const SizedBox(height: 12),
+            ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 180),
               child: ListView.builder(
                 shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 11.2),
                 itemCount: completions.length,
                 itemBuilder: (context, i) =>
                     _ProjectCompletionRow(completion: completions[i]),
               ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -505,11 +610,7 @@ class _ProjectCompletionRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
+          Icon(Icons.folder, size: 14, color: color),
           const SizedBox(width: 10),
           Expanded(
             flex: 2,
@@ -562,11 +663,15 @@ class _TaskStatusRing extends StatelessWidget {
     required this.active,
     required this.overdue,
     required this.completed,
+    this.height,
   });
 
   final int active;
   final int overdue;
   final int completed;
+
+  /// See [_StatCard.height].
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
@@ -604,36 +709,55 @@ class _TaskStatusRing extends StatelessWidget {
       ],
     );
 
-    return Card(
+    final ringRow = LayoutBuilder(
+      builder: (context, constraints) {
+        // The ring is a fixed 88px plus a 20px gap, so a Row needs ~220px
+        // before the legend has enough room left to show its values
+        // without overflowing — below that, stack instead.
+        if (constraints.maxWidth < 220) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: ring),
+              const SizedBox(height: 16.8),
+              legend,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            ring,
+            const SizedBox(width: 20),
+            Expanded(child: legend),
+          ],
+        );
+      },
+    );
+
+    final card = Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16.8),
-        // The ring is a fixed 88px plus a 20px gap, so a Row needs
-        // ~220px before the legend has enough room left to show its
-        // values without overflowing — below that, stack instead.
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 220) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(child: ring),
-                  const SizedBox(height: 16.8),
-                  legend,
-                ],
-              );
-            }
-            return Row(
-              children: [
-                ring,
-                const SizedBox(width: 20),
-                Expanded(child: legend),
-              ],
-            );
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CardHeader(icon: Icons.donut_large, label: 'Task Status'),
+            const SizedBox(height: 12),
+            // With a fixed height to match (the Dashboard's row layout),
+            // the ring+legend content can come close to or exceed the
+            // budget left after the header, depending on which of the two
+            // sub-layouts above this ends up in — scrolling instead of
+            // overflowing covers that without needing to chase an exact
+            // pixel budget.
+            if (height != null)
+              Expanded(child: SingleChildScrollView(child: ringRow))
+            else
+              ringRow,
+          ],
         ),
       ),
     );
+    return height == null ? card : SizedBox(height: height, child: card);
   }
 }
 
