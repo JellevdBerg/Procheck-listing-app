@@ -326,8 +326,6 @@ class ProjectsOverview extends StatelessWidget {
           progressTrend: progressTrend,
         ),
         const SizedBox(height: 22.4),
-        const NocturneSectionLabel('TODAY & NEEDS ATTENTION'),
-        const SizedBox(height: 8),
         _AttentionCard(
           tasks: attentionTasks,
           projectById: projectById,
@@ -563,30 +561,39 @@ class _AttentionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (tasks.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(
-          'Nothing needs your attention right now.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      );
-    }
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 11.2),
+        padding: const EdgeInsets.all(16.8),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var i = 0; i < tasks.length; i++) ...[
-              if (i > 0) const Divider(height: 1),
-              _AttentionRow(
-                task: tasks[i],
-                project: projectById[tasks[i].projectId],
-                now: now,
-                onOpenTask: onOpenTask,
+            const _CardHeader(icon: Icons.notifications_none, label: 'Today & Needs Attention'),
+            if (tasks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Nothing needs your attention right now.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < tasks.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      _AttentionRow(
+                        task: tasks[i],
+                        project: projectById[tasks[i].projectId],
+                        now: now,
+                        onOpenTask: onOpenTask,
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ],
           ],
         ),
       ),
