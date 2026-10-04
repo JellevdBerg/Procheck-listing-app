@@ -197,6 +197,11 @@ class _DueDateCalendarDialogState extends State<_DueDateCalendarDialog> {
                       !date.isBefore(rangeStart) &&
                       !date.isAfter(rangeEnd);
 
+                  final isRangeStart =
+                      rangeStart != null && _isSameDay(date, rangeStart);
+                  final isRangeEnd =
+                      rangeEnd != null && _isSameDay(date, rangeEnd);
+
                   return InkWell(
                     onTap: () => _handleDayTap(date),
                     child: Padding(
@@ -204,8 +209,31 @@ class _DueDateCalendarDialogState extends State<_DueDateCalendarDialog> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
+                          // Only the range's actual first/last day gets a
+                          // rounded cap; every other in-range cell —
+                          // including ones that happen to fall at the start
+                          // or end of a week's row — stays square, so the
+                          // highlight reads as one continuous bar.
                           if (inRange)
-                            Container(color: accent.withValues(alpha: 0.16)),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: isRangeStart
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  bottomLeft: isRangeStart
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  topRight: isRangeEnd
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  bottomRight: isRangeEnd
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                ),
+                              ),
+                            ),
                           Container(
                             alignment: Alignment.center,
                             width: 30,
