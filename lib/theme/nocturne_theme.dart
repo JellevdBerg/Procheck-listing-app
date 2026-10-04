@@ -54,6 +54,22 @@ class NocturneColors {
   final Color neutral800;
   final Color neutral900;
 
+  NocturneColors copyWith({Color? bg}) => NocturneColors(
+    bg: bg ?? this.bg,
+    surface: surface,
+    text: text,
+    divider: divider,
+    neutral100: neutral100,
+    neutral200: neutral200,
+    neutral300: neutral300,
+    neutral400: neutral400,
+    neutral500: neutral500,
+    neutral600: neutral600,
+    neutral700: neutral700,
+    neutral800: neutral800,
+    neutral900: neutral900,
+  );
+
   static const dark = NocturneColors(
     bg: Color(0xFF161826),
     surface: Color(0xFF232532),
@@ -126,17 +142,21 @@ ThemeData buildNocturneTheme({
   required Brightness brightness,
   required Color accent,
 }) {
-  final tokens = brightness == Brightness.dark
+  var tokens = brightness == Brightness.dark
       ? NocturneColors.dark
       : NocturneColors.light;
   final onAccent = accent.computeLuminance() > 0.5
       ? Colors.black
       : Colors.white;
 
-  // A faint wash of the chosen accent over the neutral background, so the
-  // app's main surface reads as "tinted toward the accent" rather than
-  // perfectly grey, without affecting contrast enough to hurt legibility.
-  final tintedBg = Color.alphaBlend(accent.withValues(alpha: 0.05), tokens.bg);
+  // A wash of the chosen accent over the neutral background, so the app's
+  // main surface reads as tinted toward that color rather than perfectly
+  // grey. Folded into `tokens.bg` itself (not just ThemeData's
+  // scaffoldBackgroundColor) since several screens paint their background
+  // directly from `context.nocturne.bg` rather than relying on Scaffold's
+  // default fill.
+  final tintedBg = Color.alphaBlend(accent.withValues(alpha: 0.1), tokens.bg);
+  tokens = tokens.copyWith(bg: tintedBg);
 
   final colorScheme = ColorScheme(
     brightness: brightness,
