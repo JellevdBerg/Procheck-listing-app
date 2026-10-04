@@ -16,7 +16,7 @@ const _monthNames = [
   'November',
   'December',
 ];
-const _weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 /// The sidebar's month grid: today is a filled accent circle, a different
 /// selected day gets an accent ring, and every cell navigates to the Day
@@ -39,7 +39,7 @@ class MiniCalendar extends StatelessWidget {
     final accent = context.nocturneAccent;
     final today = DateTime.now();
     final firstOfMonth = DateTime(month.year, month.month, 1);
-    final startOffset = firstOfMonth.weekday % 7;
+    final startOffset = firstOfMonth.weekday - 1;
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
 
     bool isSameDay(DateTime a, DateTime b) =>

@@ -25,19 +25,19 @@ const _monthNames = [
   'December',
 ];
 const _weekdayLabels = [
-  'Sunday',
   'Monday',
   'Tuesday',
   'Wednesday',
   'Thursday',
   'Friday',
   'Saturday',
+  'Sunday',
 ];
 
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
-DateTime _weekStartOf(DateTime d) => d.subtract(Duration(days: d.weekday % 7));
+DateTime _weekStartOf(DateTime d) => d.subtract(Duration(days: d.weekday - 1));
 
 enum _CalendarView { week, month }
 
@@ -115,7 +115,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
     final firstOfMonth = DateTime(_anchor.year, _anchor.month, 1);
     final gridStart = firstOfMonth.subtract(
-      Duration(days: firstOfMonth.weekday % 7),
+      Duration(days: firstOfMonth.weekday - 1),
     );
 
     return Padding(
@@ -168,33 +168,42 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: _view == _CalendarView.month
-                ? Column(
-                    children: [
-                      for (var week = 0; week < 6; week++)
-                        Expanded(
-                          child: _WeekRow(
-                            rowStart: gridStart.add(Duration(days: week * 7)),
-                            month: _anchor,
-                            today: today,
-                            tasks: tasks,
-                            projectsById: projectsById,
-                            onDayTap: widget.onDaySelected,
-                            onTaskTap: _handleTaskTap,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: tokens.neutral800),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _view == _CalendarView.month
+                  ? Column(
+                      children: [
+                        for (var week = 0; week < 6; week++)
+                          Expanded(
+                            child: _WeekRow(
+                              rowStart: gridStart.add(Duration(days: week * 7)),
+                              month: _anchor,
+                              today: today,
+                              tasks: tasks,
+                              projectsById: projectsById,
+                              onDayTap: widget.onDaySelected,
+                              onTaskTap: _handleTaskTap,
+                              showTopBorder: week != 0,
+                            ),
                           ),
-                        ),
-                    ],
-                  )
-                : _WeekRow(
-                    rowStart: _weekStartOf(_anchor),
-                    month: _anchor,
-                    today: today,
-                    tasks: tasks,
-                    projectsById: projectsById,
-                    onDayTap: widget.onDaySelected,
-                    onTaskTap: _handleTaskTap,
-                    dimOutOfRangeDays: false,
-                  ),
+                      ],
+                    )
+                  : _WeekRow(
+                      rowStart: _weekStartOf(_anchor),
+                      month: _anchor,
+                      today: today,
+                      tasks: tasks,
+                      projectsById: projectsById,
+                      onDayTap: widget.onDaySelected,
+                      onTaskTap: _handleTaskTap,
+                      dimOutOfRangeDays: false,
+                      showTopBorder: false,
+                    ),
+            ),
           ),
         ],
       ),
@@ -215,6 +224,7 @@ class _WeekRow extends StatelessWidget {
     required this.onDayTap,
     required this.onTaskTap,
     this.dimOutOfRangeDays = true,
+    this.showTopBorder = true,
   });
 
   final DateTime rowStart;
@@ -225,6 +235,7 @@ class _WeekRow extends StatelessWidget {
   final ValueChanged<DateTime> onDayTap;
   final void Function(Task task, BuildContext rowContext) onTaskTap;
   final bool dimOutOfRangeDays;
+  final bool showTopBorder;
 
   @override
   Widget build(BuildContext context) {
@@ -234,7 +245,9 @@ class _WeekRow extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: tokens.divider)),
+        border: showTopBorder
+            ? Border(top: BorderSide(color: tokens.divider))
+            : null,
       ),
       child: Stack(
         children: [
@@ -252,7 +265,7 @@ class _WeekRow extends StatelessWidget {
                       inCurrentMonth: !dimOutOfRangeDays ||
                           rowStart.add(Duration(days: i)).month ==
                               month.month,
-                      isWeekend: i == 0 || i == 6,
+                      isWeekend: i == 5 || i == 6,
                       showDivider: i < 6,
                     ),
                   ),
@@ -469,7 +482,9 @@ class _TaskBar extends StatelessWidget {
     final statusColor = task.isChecked
         ? tokens.neutral500
         : (isOverdue ? NocturnePriority.high : accent);
-    final bg = statusColor.withValues(alpha: 0.12);
+    // Blended onto the opaque surface color (rather than left translucent)
+    // so the grid lines and shading behind a bar never show through it.
+    final bg = Color.alphaBlend(statusColor.withValues(alpha: 0.12), tokens.surface);
     final fg = statusColor;
     final border = statusColor.withValues(alpha: 0.6);
 
