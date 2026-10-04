@@ -27,11 +27,16 @@ class MiniCalendar extends StatelessWidget {
     required this.month,
     required this.selectedDay,
     required this.onDayTap,
+    this.daysWithTasks = const {},
   });
 
   final DateTime month;
   final DateTime? selectedDay;
   final ValueChanged<DateTime> onDayTap;
+
+  /// Dates (normalized to midnight) that have at least one open task due —
+  /// those cells get a small underline below the day number.
+  final Set<DateTime> daysWithTasks;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +87,7 @@ class MiniCalendar extends StatelessWidget {
               crossAxisCount: 7,
               mainAxisSpacing: 3,
               crossAxisSpacing: 3,
-              childAspectRatio: 1.6,
+              childAspectRatio: 1.3,
             ),
             itemCount: startOffset + daysInMonth,
             itemBuilder: (context, index) {
@@ -93,6 +98,9 @@ class MiniCalendar extends StatelessWidget {
               final isSelected = selectedDay != null
                   ? isSameDay(date, selectedDay!)
                   : false;
+              final hasTasks = daysWithTasks.contains(
+                DateTime(date.year, date.month, date.day),
+              );
 
               return InkWell(
                 onTap: () => onDayTap(date),
@@ -106,14 +114,33 @@ class MiniCalendar extends StatelessWidget {
                         ? Border.all(color: accent)
                         : null,
                   ),
-                  child: Text(
-                    '$day',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isToday
-                          ? Colors.white
-                          : (isSelected ? accent : tokens.neutral300),
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$day',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isToday
+                              ? Colors.white
+                              : (isSelected ? accent : tokens.neutral300),
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      SizedBox(
+                        width: 8,
+                        height: 2,
+                        child: hasTasks
+                            ? DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: isToday ? Colors.white : accent,
+                                  borderRadius: BorderRadius.circular(1),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ],
                   ),
                 ),
               );

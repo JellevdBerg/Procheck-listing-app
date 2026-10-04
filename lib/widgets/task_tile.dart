@@ -187,7 +187,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                 const SizedBox(width: 6),
               if (task.dueDate != null) ...[
                 NocturneTag(
-                  label: formatDueDate(task.dueDate!, settings.dateFormat),
+                  label: formatDueLabel(task, settings.dateFormat),
                   icon: Icons.access_time,
                   outline: true,
                 ),
@@ -262,6 +262,29 @@ String formatDueDate(DateTime dueDate, DateFormatOption format) {
     DateFormatOption.iso => '$year-$month-$day',
   };
   return '$datePart, $hour12:$minute $period';
+}
+
+String _formatDateOnly(DateTime date, DateFormatOption format) {
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  final year = date.year.toString().padLeft(4, '0');
+  return switch (format) {
+    DateFormatOption.mdy => '$month/$day/$year',
+    DateFormatOption.dmy => '$day/$month/$year',
+    DateFormatOption.iso => '$year-$month-$day',
+  };
+}
+
+/// Renders a task's due date for display: a single moment (date + time) as
+/// before, or, when [Task.dueDateEnd] is set, a "start - end" date range
+/// (dates only, since a range spans whole days rather than a single
+/// moment).
+String formatDueLabel(Task task, DateFormatOption format) {
+  final dueDate = task.dueDate;
+  if (dueDate == null) return '';
+  final dueDateEnd = task.dueDateEnd;
+  if (dueDateEnd == null) return formatDueDate(dueDate, format);
+  return '${_formatDateOnly(dueDate, format)} - ${_formatDateOnly(dueDateEnd, format)}';
 }
 
 /// The expanded region of a [TaskTile]: subtasks below the task, with a
@@ -392,7 +415,7 @@ class _DueDateRow extends ConsumerWidget {
               : InkWell(
                   onTap: () => _pickDueDate(context, ref),
                   child: Text(
-                    'Due ${formatDueDate(dueDate, dateFormat)}',
+                    'Due ${formatDueLabel(task, dateFormat)}',
                     style: TextStyle(
                       color: isOverdue ? theme.colorScheme.error : null,
                       fontWeight: isOverdue ? FontWeight.w600 : null,
@@ -400,7 +423,13 @@ class _DueDateRow extends ConsumerWidget {
                   ),
                 ),
         ),
-        if (dueDate != null)
+        if (dueDate != null) ...[
+          IconButton(
+            icon: const Icon(Icons.date_range, size: 18),
+            tooltip: 'Set a date range',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _pickDueDateRange(context, ref),
+          ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
             tooltip: 'Remove due date',
@@ -408,6 +437,7 @@ class _DueDateRow extends ConsumerWidget {
             onPressed: () =>
                 ref.read(tasksProvider.notifier).setTaskDueDate(task.id, null),
           ),
+        ],
       ],
     );
   }
@@ -437,6 +467,44 @@ class _DueDateRow extends ConsumerWidget {
       time.minute,
     );
     ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
+  }
+
+  /// Turns the single due date into a "start - end" range (e.g. a task
+  /// that spans a multi-day trip or sprint) by picking both ends at once;
+  /// the start keeps its existing time of day, since a range is about
+  /// which days the task covers rather than a specific moment.
+  Future<void> _pickDueDateRange(BuildContext context, WidgetRef ref) async {
+    final now = DateTime.now();
+    final initialStart = task.dueDate ?? now;
+    final initialEnd = task.dueDateEnd ?? initialStart;
+    final range = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(
+        start: initialStart.isBefore(now) ? now : initialStart,
+        end: initialEnd.isBefore(initialStart) ? initialStart : initialEnd,
+      ),
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
+    );
+    if (range == null) return;
+
+    final start = DateTime(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+      initialStart.hour,
+      initialStart.minute,
+    );
+    final end = DateTime(
+      range.end.year,
+      range.end.month,
+      range.end.day,
+      23,
+      59,
+    );
+    ref
+        .read(tasksProvider.notifier)
+        .setTaskDueDate(task.id, start, dueDateEnd: end);
   }
 }
 

@@ -18,6 +18,7 @@ class Task extends HiveObject {
     this.projectId,
     this.templateId,
     this.dueDate,
+    this.dueDateEnd,
     double? sortOrder,
     this.priorityIndex = 0,
     List<Attachment>? attachments,
@@ -57,6 +58,14 @@ class Task extends HiveObject {
   /// and cancelled outright once the task is checked off or deleted.
   @HiveField(8)
   DateTime? dueDate;
+
+  /// End of a due-date range, when this task's due date spans more than one
+  /// day (e.g. "due Sep 20 - Sep 25") rather than a single moment. Null for
+  /// an ordinary single-day due date. Reminder notifications still fire off
+  /// [dueDate] alone; this only affects how the due date is displayed and
+  /// which calendar days show this task.
+  @HiveField(13)
+  DateTime? dueDateEnd;
 
   /// Controls this task's position within whichever list it's shown in (a
   /// project's task list, or the home screen's unfiled tasks) — higher
@@ -107,6 +116,7 @@ class Task extends HiveObject {
     'createdAt': createdAt.toIso8601String(),
     'templateId': templateId,
     'dueDate': dueDate?.toIso8601String(),
+    'dueDateEnd': dueDateEnd?.toIso8601String(),
     'sortOrder': sortOrder,
     'priorityIndex': priorityIndex,
     'attachments': attachments.map((a) => a.toJson()).toList(),
@@ -127,6 +137,9 @@ class Task extends HiveObject {
     dueDate: json['dueDate'] == null
         ? null
         : DateTime.parse(json['dueDate'] as String),
+    dueDateEnd: json['dueDateEnd'] == null
+        ? null
+        : DateTime.parse(json['dueDateEnd'] as String),
     sortOrder: (json['sortOrder'] as num?)?.toDouble(),
     priorityIndex: json['priorityIndex'] as int? ?? 0,
     attachments: (json['attachments'] as List<dynamic>? ?? [])

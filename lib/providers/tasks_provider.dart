@@ -294,10 +294,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _persist(task);
   }
 
-  void setTaskDueDate(String taskId, DateTime? dueDate) {
+  void setTaskDueDate(String taskId, DateTime? dueDate, {DateTime? dueDateEnd}) {
     final task = _box.get(taskId);
     if (task == null) return;
     task.dueDate = dueDate;
+    task.dueDateEnd = dueDate == null ? null : dueDateEnd;
     _persist(task);
     unawaited(NotificationService.instance.scheduleForTask(task));
   }

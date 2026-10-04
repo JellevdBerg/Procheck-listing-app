@@ -60,6 +60,21 @@ class AppSidebar extends ConsumerWidget {
     final favorites = activeProjects.where((p) => p.favorite).toList();
     final archivedCount = projects.where((p) => p.archived).length;
 
+    final daysWithTasks = <DateTime>{};
+    for (final t in tasks) {
+      if (t.isChecked || t.dueDate == null) continue;
+      final start = _dateOnly(t.dueDate!);
+      final end = t.dueDateEnd == null ? start : _dateOnly(t.dueDateEnd!);
+      var day = start;
+      var guard = 0;
+      // Capped so a mistakenly huge range can't make this loop unbounded.
+      while (!day.isAfter(end) && guard < 60) {
+        daysWithTasks.add(day);
+        day = day.add(const Duration(days: 1));
+        guard++;
+      }
+    }
+
     final activeProjectIds = activeProjects.map((p) => p.id).toSet();
     final dashboardCount = tasks
         .where(
@@ -233,6 +248,7 @@ class AppSidebar extends ConsumerWidget {
               month: calendarMonth,
               selectedDay: selectedDay,
               onDayTap: onDaySelected,
+              daysWithTasks: daysWithTasks,
             ),
             const SizedBox(height: 16),
           ],
@@ -255,6 +271,8 @@ class AppSidebar extends ConsumerWidget {
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static Future<void> _showWorkspaceContextMenu(
     BuildContext context,
