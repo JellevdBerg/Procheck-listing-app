@@ -236,46 +236,105 @@ class _WeekRow extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: tokens.divider)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          Row(
-            children: [
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: _DayNumber(
-                    date: rowStart.add(Duration(days: i)),
-                    active: !dimOutOfRangeDays ||
-                        rowStart.add(Duration(days: i)).month == month.month,
-                    isToday: _isSameDay(
-                      rowStart.add(Duration(days: i)),
-                      today,
+          // A background+divider layer sized to the full row, independent
+          // of the day-number/lane content layered on top — so weekend and
+          // next-month shading, and the lines between days, run the row's
+          // whole height rather than just behind the day numbers.
+          Positioned.fill(
+            child: Row(
+              children: [
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: _DayCellBackground(
+                      inCurrentMonth: !dimOutOfRangeDays ||
+                          rowStart.add(Duration(days: i)).month ==
+                              month.month,
+                      isWeekend: i == 0 || i == 6,
+                      showDivider: i < 6,
                     ),
-                    onTap: () => onDayTap(rowStart.add(Duration(days: i))),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      Expanded(
+                        child: _DayNumber(
+                          date: rowStart.add(Duration(days: i)),
+                          active: !dimOutOfRangeDays ||
+                              rowStart.add(Duration(days: i)).month ==
+                                  month.month,
+                          isToday: _isSameDay(
+                            rowStart.add(Duration(days: i)),
+                            today,
+                          ),
+                          onTap: () =>
+                              onDayTap(rowStart.add(Duration(days: i))),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final lane in lanes) ...[
+                          _LaneRow(
+                            lane: lane,
+                            today: today,
+                            projectsById: projectsById,
+                            onTaskTap: onTaskTap,
+                          ),
+                          const SizedBox(height: 3),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  for (final lane in lanes) ...[
-                    _LaneRow(
-                      lane: lane,
-                      today: today,
-                      projectsById: projectsById,
-                      onTaskTap: onTaskTap,
-                    ),
-                    const SizedBox(height: 3),
-                  ],
-                ],
-              ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One day column's full-height backdrop: shades weekends and days outside
+/// the month being viewed, and draws the dividing line to its right.
+class _DayCellBackground extends StatelessWidget {
+  const _DayCellBackground({
+    required this.inCurrentMonth,
+    required this.isWeekend,
+    required this.showDivider,
+  });
+
+  final bool inCurrentMonth;
+  final bool isWeekend;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final Color? bg = !inCurrentMonth
+        ? Colors.black.withValues(alpha: 0.18)
+        : (isWeekend ? tokens.neutral700.withValues(alpha: 0.16) : null);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        border: showDivider
+            ? Border(right: BorderSide(color: tokens.divider))
+            : null,
       ),
     );
   }
