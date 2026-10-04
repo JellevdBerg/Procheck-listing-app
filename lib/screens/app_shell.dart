@@ -14,6 +14,7 @@ import '../widgets/sidebar/app_sidebar.dart';
 import '../widgets/text_prompt_dialog.dart';
 import 'app_screen.dart';
 import 'archived_screen.dart';
+import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
 import 'day_screen.dart';
 import 'project_detail_overlay.dart';
@@ -173,6 +174,18 @@ class _AppShellState extends ConsumerState<AppShell>
     _openProjectDetail(projectId, originRect: rect, highlightTaskId: taskId);
   }
 
+  /// Jumps into the Day view for [day] — used by both the sidebar's mini
+  /// calendar and the full Calendar screen, so clicking a date behaves the
+  /// same no matter where it was clicked from.
+  void _onDaySelected(DateTime day) {
+    setState(() {
+      _selectedDay = day;
+      _calendarMonth = day;
+      _screen = AppScreen.day;
+    });
+    if (_detailProjectId != null) _closeProjectDetail();
+  }
+
   void _openFavoriteProject(Project project) {
     ref.read(projectsProvider.notifier).touchProject(project.id);
     setState(() => _screen = AppScreen.projects);
@@ -247,14 +260,7 @@ class _AppShellState extends ConsumerState<AppShell>
                 currentScreen: _screen,
                 onScreenSelected: _switchScreen,
                 onFavoriteProjectTap: _openFavoriteProject,
-                onDaySelected: (day) {
-                  setState(() {
-                    _selectedDay = day;
-                    _calendarMonth = day;
-                    _screen = AppScreen.day;
-                  });
-                  if (_detailProjectId != null) _closeProjectDetail();
-                },
+                onDaySelected: _onDaySelected,
                 calendarMonth: _calendarMonth,
                 selectedDay: _selectedDay,
               ),
@@ -346,6 +352,7 @@ class _AppShellState extends ConsumerState<AppShell>
       ),
       AppScreen.today => const TodayScreen(),
       AppScreen.upcoming => const UpcomingScreen(),
+      AppScreen.calendar => CalendarScreen(onDaySelected: _onDaySelected),
       AppScreen.day => DayScreen(date: _selectedDay ?? DateTime.now()),
       AppScreen.templates => const TemplatesScreen(),
       AppScreen.archived => ArchivedScreen(
