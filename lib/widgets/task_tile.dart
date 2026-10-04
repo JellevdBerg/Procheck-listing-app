@@ -8,6 +8,7 @@ import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'attachments_editor.dart';
+import 'due_date_calendar_dialog.dart';
 import 'nocturne/nocturne_widgets.dart';
 import 'notes_field.dart';
 import 'wobble_checkbox.dart';
@@ -244,23 +245,29 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   }
 }
 
+// A due date/time carries no separate "has a time" flag — setting a time
+// is optional, and skipping it is marked by parking the time component at
+// 23:59 (read as "due sometime that day" rather than a specific moment).
+// The same sentinel marks a date range's end, which was always a
+// whole-day concept. formatDueDate and _DueDateRow._pickDueDate are the
+// two places that create or read it.
+const _noTimeHour = 23;
+const _noTimeMinute = 59;
+bool _hasExplicitTime(DateTime d) =>
+    !(d.hour == _noTimeHour && d.minute == _noTimeMinute);
+
 /// Renders a due date's numeric date portion according to
 /// [AppSettings.dateFormat] (e.g. "09/20/2026, 2:30 PM"), so it actually
 /// matches whichever of the three formats is picked in Settings > Task
-/// defaults rather than always showing the same fixed "Sep 20" style.
+/// defaults rather than always showing the same fixed "Sep 20" style. Omits
+/// the time portion entirely when no specific time was set.
 String formatDueDate(DateTime dueDate, DateFormatOption format) {
+  final datePart = _formatDateOnly(dueDate, format);
+  if (!_hasExplicitTime(dueDate)) return datePart;
+
   final hour12 = dueDate.hour % 12 == 0 ? 12 : dueDate.hour % 12;
   final minute = dueDate.minute.toString().padLeft(2, '0');
   final period = dueDate.hour < 12 ? 'AM' : 'PM';
-
-  final month = dueDate.month.toString().padLeft(2, '0');
-  final day = dueDate.day.toString().padLeft(2, '0');
-  final year = dueDate.year.toString().padLeft(4, '0');
-  final datePart = switch (format) {
-    DateFormatOption.mdy => '$month/$day/$year',
-    DateFormatOption.dmy => '$day/$month/$year',
-    DateFormatOption.iso => '$year-$month-$day',
-  };
   return '$datePart, $hour12:$minute $period';
 }
 
@@ -423,13 +430,7 @@ class _DueDateRow extends ConsumerWidget {
                   ),
                 ),
         ),
-        if (dueDate != null) ...[
-          IconButton(
-            icon: const Icon(Icons.date_range, size: 18),
-            tooltip: 'Set a date range',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _pickDueDateRange(context, ref),
-          ),
+        if (dueDate != null)
           IconButton(
             icon: const Icon(Icons.close, size: 18),
             tooltip: 'Remove due date',
@@ -437,74 +438,64 @@ class _DueDateRow extends ConsumerWidget {
             onPressed: () =>
                 ref.read(tasksProvider.notifier).setTaskDueDate(task.id, null),
           ),
-        ],
       ],
     );
   }
 
+  /// One calendar for both a single due date and a date range — see
+  /// [showDueDateCalendarDialog]. A range needs no time (it's about which
+  /// days are covered, not a moment), so only a single-day pick goes on to
+  /// ask for a time, and even then answering is optional: dismissing that
+  /// step leaves the task with no specific time rather than abandoning the
+  /// date that was just picked.
   Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
-    final initial = task.dueDate ?? now;
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial.isBefore(now) ? now : initial,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 5)),
+    final selection = await showDueDateCalendarDialog(
+      context,
+      initialStart: task.dueDate,
+      initialEnd: task.dueDateEnd,
     );
-    if (date == null || !context.mounted) return;
+    if (selection == null || !context.mounted) return;
 
+    if (selection.end != null) {
+      final previousTime = task.dueDate;
+      final keepsTime = previousTime != null && _hasExplicitTime(previousTime);
+      final start = DateTime(
+        selection.start.year,
+        selection.start.month,
+        selection.start.day,
+        keepsTime ? previousTime.hour : _noTimeHour,
+        keepsTime ? previousTime.minute : _noTimeMinute,
+      );
+      final end = DateTime(
+        selection.end!.year,
+        selection.end!.month,
+        selection.end!.day,
+        _noTimeHour,
+        _noTimeMinute,
+      );
+      ref
+          .read(tasksProvider.notifier)
+          .setTaskDueDate(task.id, start, dueDateEnd: end);
+      return;
+    }
+
+    final initialTime = task.dueDate != null && _hasExplicitTime(task.dueDate!)
+        ? TimeOfDay.fromDateTime(task.dueDate!)
+        : const TimeOfDay(hour: _noTimeHour, minute: _noTimeMinute);
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
+      initialTime: initialTime,
     );
-    if (time == null) return;
+    if (!context.mounted) return;
 
     final dueDate = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
+      selection.start.year,
+      selection.start.month,
+      selection.start.day,
+      time?.hour ?? _noTimeHour,
+      time?.minute ?? _noTimeMinute,
     );
     ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
-  }
-
-  /// Turns the single due date into a "start - end" range (e.g. a task
-  /// that spans a multi-day trip or sprint) by picking both ends at once;
-  /// the start keeps its existing time of day, since a range is about
-  /// which days the task covers rather than a specific moment.
-  Future<void> _pickDueDateRange(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
-    final initialStart = task.dueDate ?? now;
-    final initialEnd = task.dueDateEnd ?? initialStart;
-    final range = await showDateRangePicker(
-      context: context,
-      initialDateRange: DateTimeRange(
-        start: initialStart.isBefore(now) ? now : initialStart,
-        end: initialEnd.isBefore(initialStart) ? initialStart : initialEnd,
-      ),
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 5)),
-    );
-    if (range == null) return;
-
-    final start = DateTime(
-      range.start.year,
-      range.start.month,
-      range.start.day,
-      initialStart.hour,
-      initialStart.minute,
-    );
-    final end = DateTime(
-      range.end.year,
-      range.end.month,
-      range.end.day,
-      23,
-      59,
-    );
-    ref
-        .read(tasksProvider.notifier)
-        .setTaskDueDate(task.id, start, dueDateEnd: end);
   }
 }
 
