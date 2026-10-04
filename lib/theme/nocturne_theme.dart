@@ -133,6 +133,11 @@ ThemeData buildNocturneTheme({
       ? Colors.black
       : Colors.white;
 
+  // A faint wash of the chosen accent over the neutral background, so the
+  // app's main surface reads as "tinted toward the accent" rather than
+  // perfectly grey, without affecting contrast enough to hurt legibility.
+  final tintedBg = Color.alphaBlend(accent.withValues(alpha: 0.05), tokens.bg);
+
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: accent,
@@ -166,8 +171,8 @@ ThemeData buildNocturneTheme({
     useMaterial3: true,
     brightness: brightness,
     fontFamily: _fontFamily,
-    scaffoldBackgroundColor: tokens.bg,
-    canvasColor: tokens.bg,
+    scaffoldBackgroundColor: tintedBg,
+    canvasColor: tintedBg,
     colorScheme: colorScheme,
     dividerColor: tokens.divider,
     hintColor: tokens.neutral400,
@@ -185,7 +190,7 @@ ThemeData buildNocturneTheme({
       labelSmall: body(11),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: tokens.bg,
+      backgroundColor: tintedBg,
       foregroundColor: tokens.text,
       elevation: 0,
       titleTextStyle: heading(19),
