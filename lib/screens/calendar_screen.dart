@@ -188,6 +188,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               onDayTap: widget.onDaySelected,
                               onTaskTap: _handleTaskTap,
                               showTopBorder: week != 0,
+                              maxVisibleLanes: 4,
                             ),
                           ),
                       ],
@@ -225,6 +226,7 @@ class _WeekRow extends StatelessWidget {
     required this.onTaskTap,
     this.dimOutOfRangeDays = true,
     this.showTopBorder = true,
+    this.maxVisibleLanes,
   });
 
   final DateTime rowStart;
@@ -237,11 +239,27 @@ class _WeekRow extends StatelessWidget {
   final bool dimOutOfRangeDays;
   final bool showTopBorder;
 
+  /// Caps how many lanes of bars this row draws before the rest collapse
+  /// into a per-day "+N" overflow chip — null means show every lane
+  /// (scrolling locally if they don't fit), used by the Week view.
+  final int? maxVisibleLanes;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final rowEnd = rowStart.add(const Duration(days: 6));
     final lanes = _computeLanes(tasks, rowStart, rowEnd);
+
+    final cap = maxVisibleLanes;
+    final overflow = cap != null && lanes.length > cap;
+    final visibleLanes = overflow ? lanes.sublist(0, cap) : lanes;
+    final hiddenLanes = overflow ? lanes.sublist(cap) : const <List<_BarPlacement>>[];
+    final overflowCounts = List<int>.generate(
+      7,
+      (day) => hiddenLanes
+          .where((lane) => lane.any((p) => p.colStart <= day && p.colEnd >= day))
+          .length,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -301,7 +319,7 @@ class _WeekRow extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        for (final lane in lanes) ...[
+                        for (final lane in visibleLanes) ...[
                           _LaneRow(
                             lane: lane,
                             today: today,
@@ -310,6 +328,14 @@ class _WeekRow extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                         ],
+                        if (overflow)
+                          _OverflowRow(
+                            rowStart: rowStart,
+                            counts: overflowCounts,
+                            tasks: tasks,
+                            projectsById: projectsById,
+                            onTaskTap: onTaskTap,
+                          ),
                       ],
                     ),
                   ),
@@ -339,19 +365,61 @@ class _DayCellBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
-    final Color? bg = !inCurrentMonth
-        ? Colors.black.withValues(alpha: 0.18)
-        : (isWeekend ? tokens.neutral700.withValues(alpha: 0.32) : null);
 
+    Widget fill;
+    if (!inCurrentMonth) {
+      fill = DecoratedBox(
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.18)),
+      );
+    } else if (isWeekend) {
+      fill = CustomPaint(
+        painter: _DiagonalStripesPainter(
+          color: tokens.neutral700.withValues(alpha: 0.4),
+        ),
+      );
+    } else {
+      fill = const SizedBox.expand();
+    }
+
+    // The divider is painted as a foreground decoration so it stays on
+    // top of the weekend stripes instead of being drawn underneath them.
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: bg,
         border: showDivider
             ? Border(right: BorderSide(color: tokens.divider))
             : null,
       ),
+      position: DecorationPosition.foreground,
+      child: SizedBox.expand(child: fill),
     );
   }
+}
+
+/// Paints evenly spaced 45° lines across its full size — used for the
+/// weekend columns instead of a flat tint so they read as "blocked off"
+/// rather than just a different shade.
+class _DiagonalStripesPainter extends CustomPainter {
+  _DiagonalStripesPainter({required this.color});
+
+  final Color color;
+
+  static const _spacing = 7.0;
+  static const _strokeWidth = 1.2;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = _strokeWidth;
+    final span = size.width + size.height;
+    for (double x = -size.height; x < span; x += _spacing) {
+      canvas.drawLine(Offset(x, size.height), Offset(x + size.height, 0), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DiagonalStripesPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _DayNumber extends StatelessWidget {
@@ -451,6 +519,163 @@ class _LaneRow extends StatelessWidget {
     }
     return Row(children: children);
   }
+}
+
+/// The row below a capped set of lanes: one cell per day showing a "+N"
+/// chip when that day has tasks hidden beyond the visible lanes — tapping
+/// it opens the full list of that day's tasks.
+class _OverflowRow extends StatelessWidget {
+  const _OverflowRow({
+    required this.rowStart,
+    required this.counts,
+    required this.tasks,
+    required this.projectsById,
+    required this.onTaskTap,
+  });
+
+  final DateTime rowStart;
+  final List<int> counts;
+  final List<Task> tasks;
+  final Map<String, Project> projectsById;
+  final void Function(Task task, BuildContext rowContext) onTaskTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    return SizedBox(
+      height: 20,
+      child: Row(
+        children: [
+          for (var i = 0; i < 7; i++)
+            Expanded(
+              child: counts[i] <= 0
+                  ? const SizedBox()
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () {
+                            final day = rowStart.add(Duration(days: i));
+                            _showDayTasksDialog(
+                              context,
+                              day,
+                              _tasksOnDay(tasks, day),
+                              projectsById,
+                              onTaskTap,
+                            );
+                          },
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '+${counts[i]} more',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: tokens.neutral500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Every task active on [day], unchecked first and then by title — the
+/// order shown in the overflow popup.
+List<Task> _tasksOnDay(List<Task> tasks, DateTime day) {
+  final result = tasks.where((task) {
+    if (task.dueDate == null) return false;
+    final start = _dateOnly(task.dueDate!);
+    final end = task.dueDateEnd == null ? start : _dateOnly(task.dueDateEnd!);
+    return !day.isBefore(start) && !day.isAfter(end);
+  }).toList();
+  result.sort((a, b) {
+    if (a.isChecked != b.isChecked) return a.isChecked ? 1 : -1;
+    return a.title.compareTo(b.title);
+  });
+  return result;
+}
+
+void _showDayTasksDialog(
+  BuildContext context,
+  DateTime day,
+  List<Task> dayTasks,
+  Map<String, Project> projectsById,
+  void Function(Task task, BuildContext rowContext) onTaskTap,
+) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      final tokens = dialogContext.nocturne;
+      return Dialog(
+        backgroundColor: tokens.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360, maxHeight: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_monthNames[day.month - 1]} ${day.day}, ${day.year}',
+                        style: Theme.of(dialogContext).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: dayTasks.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (_, index) {
+                      final task = dayTasks[index];
+                      final placement = _BarPlacement(
+                        task: task,
+                        colStart: 0,
+                        colEnd: 0,
+                        isRangeStart: true,
+                        isRangeEnd: true,
+                      );
+                      return _TaskBar(
+                        placement: placement,
+                        today: DateTime.now(),
+                        project: projectsById[task.projectId],
+                        onTap: (_) {
+                          Navigator.of(dialogContext).pop();
+                          // Hands back the calling page's context, not the
+                          // dialog's — that one unmounts the moment it pops.
+                          onTaskTap(task, context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _TaskBar extends StatelessWidget {
