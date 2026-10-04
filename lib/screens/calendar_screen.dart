@@ -499,12 +499,12 @@ class _TaskBar extends StatelessWidget {
     final originLabel = project != null ? project!.name : 'Unfiled';
 
     final radius = BorderRadius.horizontal(
-      left: placement.isRangeStart ? const Radius.circular(11) : Radius.zero,
-      right: placement.isRangeEnd ? const Radius.circular(11) : Radius.zero,
+      left: placement.isRangeStart ? const Radius.circular(13) : Radius.zero,
+      right: placement.isRangeEnd ? const Radius.circular(13) : Radius.zero,
     );
 
     return SizedBox(
-      height: 22,
+      height: 27,
       child: Material(
         color: bg,
         shape: RoundedRectangleBorder(
@@ -515,27 +515,27 @@ class _TaskBar extends StatelessWidget {
         child: InkWell(
           onTap: () => onTap(context),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 9),
             child: Row(
               children: [
                 if (isOverdue) ...[
                   const Text(
                     '!',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFFFF3B30),
                       height: 1,
                     ),
                   ),
-                  const SizedBox(width: 3),
+                  const SizedBox(width: 4),
                 ],
                 if (priorityColor != null) ...[
-                  Icon(Icons.flag, size: 10, color: priorityColor),
-                  const SizedBox(width: 3),
+                  Icon(Icons.flag, size: 12, color: priorityColor),
+                  const SizedBox(width: 4),
                 ],
-                Icon(Icons.folder, size: 11, color: originColor),
-                const SizedBox(width: 3),
+                Icon(Icons.folder, size: 13, color: originColor),
+                const SizedBox(width: 4),
                 Expanded(
                   flex: 2,
                   child: Text(
@@ -543,13 +543,13 @@ class _TaskBar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: originColor,
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 7),
                 Expanded(
                   flex: 3,
                   child: Text(
@@ -557,7 +557,7 @@ class _TaskBar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: fg,
                       decoration:
@@ -566,10 +566,10 @@ class _TaskBar extends StatelessWidget {
                   ),
                 ),
                 if (task.hasSubtasks) ...[
-                  const SizedBox(width: 3),
+                  const SizedBox(width: 4),
                   Icon(
                     Icons.checklist,
-                    size: 11,
+                    size: 13,
                     color: fg.withValues(alpha: 0.85),
                   ),
                 ],
