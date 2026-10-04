@@ -244,6 +244,7 @@ class _WeekRow extends StatelessWidget {
           // whole height rather than just behind the day numbers.
           Positioned.fill(
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var i = 0; i < 7; i++)
                   Expanded(
@@ -327,7 +328,7 @@ class _DayCellBackground extends StatelessWidget {
     final tokens = context.nocturne;
     final Color? bg = !inCurrentMonth
         ? Colors.black.withValues(alpha: 0.18)
-        : (isWeekend ? tokens.neutral700.withValues(alpha: 0.16) : null);
+        : (isWeekend ? tokens.neutral700.withValues(alpha: 0.32) : null);
 
     return DecoratedBox(
       decoration: BoxDecoration(
