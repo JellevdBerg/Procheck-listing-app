@@ -351,7 +351,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                         : widget.onDaySelected,
                                     onTaskTap: _handleTaskTap,
                                     showTopBorder: week != 0,
-                                    maxVisibleLanes: 2,
+                                    maxVisibleLanes: 4,
                                     taskmasterOn: _taskmasterOn,
                                     onTaskDelete: onTaskDelete,
                                     dragRange: dragRange,
@@ -435,9 +435,14 @@ class _WeekRow extends StatelessWidget {
     final lanes = _computeLanes(tasks, rowStart, rowEnd);
 
     final cap = maxVisibleLanes;
+    final compact = cap != null;
     final overflow = cap != null && lanes.length > cap;
-    final visibleLanes = overflow ? lanes.sublist(0, cap) : lanes;
-    final hiddenLanes = overflow ? lanes.sublist(cap) : const <List<_BarPlacement>>[];
+    // When overflowing, one of the cap slots is spent on the "+N more"
+    // chip instead of a lane, so the row's total height never grows past
+    // what the non-overflowing (exactly-cap) case already needs.
+    final visibleLanes = overflow ? lanes.sublist(0, cap - 1) : lanes;
+    final hiddenLanes =
+        overflow ? lanes.sublist(cap - 1) : const <List<_BarPlacement>>[];
     final overflowCounts = List<int>.generate(
       7,
       (day) => hiddenLanes
@@ -518,8 +523,9 @@ class _WeekRow extends StatelessWidget {
                             onTaskTap: onTaskTap,
                             taskmasterOn: taskmasterOn,
                             onTaskDelete: onTaskDelete,
+                            compact: compact,
                           ),
-                          const SizedBox(height: 3),
+                          SizedBox(height: compact ? 2 : 3),
                         ],
                         if (overflow)
                           _OverflowRow(
@@ -528,6 +534,7 @@ class _WeekRow extends StatelessWidget {
                             tasks: tasks,
                             projectsById: projectsById,
                             onTaskTap: onTaskTap,
+                            compact: compact,
                           ),
                       ],
                     ),
@@ -695,6 +702,7 @@ class _LaneRow extends StatelessWidget {
     required this.onTaskTap,
     required this.taskmasterOn,
     required this.onTaskDelete,
+    this.compact = false,
   });
 
   final List<_BarPlacement> lane;
@@ -703,6 +711,7 @@ class _LaneRow extends StatelessWidget {
   final void Function(Task task, BuildContext rowContext) onTaskTap;
   final bool taskmasterOn;
   final void Function(Task task) onTaskDelete;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -727,6 +736,7 @@ class _LaneRow extends StatelessWidget {
               onTap: (ctx) => onTaskTap(placement.task, ctx),
               taskmasterOn: taskmasterOn,
               onDelete: () => onTaskDelete(placement.task),
+              compact: compact,
             ),
           ),
         ),
@@ -750,6 +760,7 @@ class _OverflowRow extends StatelessWidget {
     required this.tasks,
     required this.projectsById,
     required this.onTaskTap,
+    this.compact = false,
   });
 
   final DateTime rowStart;
@@ -757,12 +768,13 @@ class _OverflowRow extends StatelessWidget {
   final List<Task> tasks;
   final Map<String, Project> projectsById;
   final void Function(Task task, BuildContext rowContext) onTaskTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     return SizedBox(
-      height: 20,
+      height: compact ? 15 : 20,
       child: Row(
         children: [
           for (var i = 0; i < 7; i++)
@@ -790,7 +802,7 @@ class _OverflowRow extends StatelessWidget {
                             child: Text(
                               '+${counts[i]} more',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: compact ? 9.5 : 11,
                                 fontWeight: FontWeight.w600,
                                 color: tokens.neutral500,
                               ),
@@ -886,6 +898,7 @@ void _showDayTasksDialog(
                         },
                         taskmasterOn: false,
                         onDelete: () {},
+                        compact: false,
                       );
                     },
                   ),
@@ -907,6 +920,7 @@ class _TaskBar extends StatefulWidget {
     required this.onTap,
     required this.taskmasterOn,
     required this.onDelete,
+    this.compact = false,
   });
 
   final _BarPlacement placement;
@@ -915,6 +929,11 @@ class _TaskBar extends StatefulWidget {
   final void Function(BuildContext rowContext) onTap;
   final bool taskmasterOn;
   final VoidCallback onDelete;
+
+  /// Shrinks the bar for the month grid's stacked lanes, so four of them
+  /// plus the overflow chip fit the row's fixed height — the full size is
+  /// kept everywhere there's room to spare (Week view, the day dialog).
+  final bool compact;
 
   @override
   State<_TaskBar> createState() => _TaskBarState();
@@ -962,11 +981,13 @@ class _TaskBarState extends State<_TaskBar> {
       right: placement.isRangeEnd ? const Radius.circular(13) : Radius.zero,
     );
 
+    final compact = widget.compact;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: SizedBox(
-      height: 27,
+      height: compact ? 18 : 27,
       child: Material(
         color: bg,
         shape: RoundedRectangleBorder(
@@ -977,27 +998,27 @@ class _TaskBarState extends State<_TaskBar> {
         child: InkWell(
           onTap: () => widget.onTap(context),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 9),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 9),
             child: Row(
               children: [
                 if (isOverdue) ...[
-                  const Text(
+                  Text(
                     '!',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: compact ? 12 : 15,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFFFF3B30),
+                      color: const Color(0xFFFF3B30),
                       height: 1,
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: compact ? 3 : 4),
                 ],
                 if (priorityColor != null) ...[
-                  Icon(Icons.flag, size: 12, color: priorityColor),
-                  const SizedBox(width: 4),
+                  Icon(Icons.flag, size: compact ? 10 : 12, color: priorityColor),
+                  SizedBox(width: compact ? 3 : 4),
                 ],
-                Icon(Icons.folder, size: 13, color: originColor),
-                const SizedBox(width: 4),
+                Icon(Icons.folder, size: compact ? 11 : 13, color: originColor),
+                SizedBox(width: compact ? 3 : 4),
                 Expanded(
                   flex: 2,
                   child: Text(
@@ -1005,13 +1026,13 @@ class _TaskBarState extends State<_TaskBar> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: compact ? 10 : 12,
                       fontWeight: FontWeight.w700,
                       color: originColor,
                     ),
                   ),
                 ),
-                const SizedBox(width: 7),
+                SizedBox(width: compact ? 5 : 7),
                 Expanded(
                   flex: 3,
                   child: Text(
@@ -1019,7 +1040,7 @@ class _TaskBarState extends State<_TaskBar> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: compact ? 11 : 13,
                       fontWeight: FontWeight.w500,
                       color: fg,
                       decoration:
@@ -1028,15 +1049,15 @@ class _TaskBarState extends State<_TaskBar> {
                   ),
                 ),
                 if (task.hasSubtasks) ...[
-                  const SizedBox(width: 4),
+                  SizedBox(width: compact ? 3 : 4),
                   Icon(
                     Icons.checklist,
-                    size: 13,
+                    size: compact ? 11 : 13,
                     color: fg.withValues(alpha: 0.85),
                   ),
                 ],
                 if (widget.taskmasterOn && _hovering) ...[
-                  const SizedBox(width: 4),
+                  SizedBox(width: compact ? 3 : 4),
                   _DeleteDot(onTap: widget.onDelete),
                 ],
               ],
