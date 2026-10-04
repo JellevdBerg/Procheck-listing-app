@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/project.dart';
 import '../models/task.dart';
+import '../models/task_priority.dart';
+import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
@@ -33,13 +37,16 @@ const _weekdayLabels = [
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
+DateTime _weekStartOf(DateTime d) => d.subtract(Duration(days: d.weekday % 7));
 
-/// A full month grid — every task with a due date shows as a bar spanning
-/// the day(s) it's due, the way the sidebar's mini calendar used to (see
-/// [MiniCalendar]) but with room to actually read what's on each day. A
-/// multi-day task draws one continuous bar across its span (rounded caps
-/// only at its true start/end), and several tasks landing on the same days
-/// stack into their own lanes rather than overlapping.
+enum _CalendarView { week, month }
+
+/// A full calendar — Month for an overview of everything on the books,
+/// Week to hyperfocus on the next 7 days. Every task with a due date shows
+/// as a bar on its day(s): a multi-day task draws one continuous bar across
+/// its span (rounded caps only at its true start/end), and tasks landing on
+/// the same days stack into their own lanes rather than overlapping. The
+/// grid always fills the screen's full height, even on a quiet week.
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key, required this.onDaySelected});
 
@@ -50,32 +57,42 @@ class CalendarScreen extends ConsumerStatefulWidget {
 }
 
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  late DateTime _visibleMonth = _dateOnly(
-    DateTime(DateTime.now().year, DateTime.now().month, 1),
-  );
+  DateTime _anchor = _dateOnly(DateTime.now());
+  _CalendarView _view = _CalendarView.month;
 
-  void _changeMonth(int delta) {
+  void _step(int delta) {
     setState(() {
-      _visibleMonth = DateTime(
-        _visibleMonth.year,
-        _visibleMonth.month + delta,
-      );
+      _anchor = _view == _CalendarView.month
+          ? DateTime(_anchor.year, _anchor.month + delta, 1)
+          : _anchor.add(Duration(days: 7 * delta));
     });
   }
 
-  void _goToToday() {
-    setState(() {
-      _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
-    });
+  void _goToToday() => setState(() => _anchor = _dateOnly(DateTime.now()));
+
+  String get _headerLabel {
+    if (_view == _CalendarView.month) {
+      return '${_monthNames[_anchor.month - 1]} ${_anchor.year}';
+    }
+    final start = _weekStartOf(_anchor);
+    final end = start.add(const Duration(days: 6));
+    final startLabel =
+        '${_monthNames[start.month - 1].substring(0, 3)} ${start.day}';
+    final endLabel = start.month == end.month
+        ? '${end.day}'
+        : '${_monthNames[end.month - 1].substring(0, 3)} ${end.day}';
+    return '$startLabel – $endLabel, ${end.year}';
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final tasks = ref.watch(tasksProvider);
+    final projects = ref.watch(projectsProvider);
+    final projectsById = {for (final p in projects) p.id: p};
     final today = DateTime.now();
 
-    final firstOfMonth = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final firstOfMonth = DateTime(_anchor.year, _anchor.month, 1);
     final gridStart = firstOfMonth.subtract(
       Duration(days: firstOfMonth.weekday % 7),
     );
@@ -87,27 +104,31 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         children: [
           Row(
             children: [
-              Text(
-                '${_monthNames[_visibleMonth.month - 1]} ${_visibleMonth.year}',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _changeMonth(-1),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _changeMonth(1),
-              ),
-              const Spacer(),
               NocturneButton(
                 label: 'Today',
                 icon: Icons.today_outlined,
                 dense: true,
                 onPressed: _goToToday,
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _step(-1),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _step(1),
+              ),
+              const SizedBox(width: 4),
+              Text(_headerLabel, style: Theme.of(context).textTheme.headlineSmall),
+              const Spacer(),
+              NocturneSegmented<_CalendarView>(
+                options: _CalendarView.values,
+                value: _view,
+                labelBuilder: (v) => v == _CalendarView.week ? 'Week' : 'Month',
+                onChanged: (v) => setState(() => _view = v),
               ),
             ],
           ),
@@ -126,20 +147,31 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  for (var week = 0; week < 6; week++)
-                    _WeekRow(
-                      rowStart: gridStart.add(Duration(days: week * 7)),
-                      month: _visibleMonth,
-                      today: today,
-                      tasks: tasks,
-                      onDayTap: widget.onDaySelected,
-                    ),
-                ],
-              ),
-            ),
+            child: _view == _CalendarView.month
+                ? Column(
+                    children: [
+                      for (var week = 0; week < 6; week++)
+                        Expanded(
+                          child: _WeekRow(
+                            rowStart: gridStart.add(Duration(days: week * 7)),
+                            month: _anchor,
+                            today: today,
+                            tasks: tasks,
+                            projectsById: projectsById,
+                            onDayTap: widget.onDaySelected,
+                          ),
+                        ),
+                    ],
+                  )
+                : _WeekRow(
+                    rowStart: _weekStartOf(_anchor),
+                    month: _anchor,
+                    today: today,
+                    tasks: tasks,
+                    projectsById: projectsById,
+                    onDayTap: widget.onDaySelected,
+                    dimOutOfRangeDays: false,
+                  ),
           ),
         ],
       ),
@@ -148,21 +180,26 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 }
 
 /// One week's worth of the grid: a strip of day numbers, then every lane of
-/// task bars active that week, stacked below it.
+/// task bars active that week, stacked below it and scrolling locally if
+/// there isn't room for all of them within the row's share of the screen.
 class _WeekRow extends StatelessWidget {
   const _WeekRow({
     required this.rowStart,
     required this.month,
     required this.today,
     required this.tasks,
+    required this.projectsById,
     required this.onDayTap,
+    this.dimOutOfRangeDays = true,
   });
 
   final DateTime rowStart;
   final DateTime month;
   final DateTime today;
   final List<Task> tasks;
+  final Map<String, Project> projectsById;
   final ValueChanged<DateTime> onDayTap;
+  final bool dimOutOfRangeDays;
 
   @override
   Widget build(BuildContext context) {
@@ -184,8 +221,8 @@ class _WeekRow extends StatelessWidget {
                 Expanded(
                   child: _DayNumber(
                     date: rowStart.add(Duration(days: i)),
-                    inCurrentMonth: rowStart.add(Duration(days: i)).month ==
-                        month.month,
+                    active: !dimOutOfRangeDays ||
+                        rowStart.add(Duration(days: i)).month == month.month,
                     isToday: _isSameDay(
                       rowStart.add(Duration(days: i)),
                       today,
@@ -195,11 +232,24 @@ class _WeekRow extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 2),
-          for (final lane in lanes) ...[
-            _LaneRow(lane: lane, today: today, onDayTap: onDayTap),
-            const SizedBox(height: 2),
-          ],
+          const SizedBox(height: 3),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final lane in lanes) ...[
+                    _LaneRow(
+                      lane: lane,
+                      today: today,
+                      projectsById: projectsById,
+                      onDayTap: onDayTap,
+                    ),
+                    const SizedBox(height: 3),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -209,13 +259,13 @@ class _WeekRow extends StatelessWidget {
 class _DayNumber extends StatelessWidget {
   const _DayNumber({
     required this.date,
-    required this.inCurrentMonth,
+    required this.active,
     required this.isToday,
     required this.onTap,
   });
 
   final DateTime date;
-  final bool inCurrentMonth;
+  final bool active;
   final bool isToday;
   final VoidCallback onTap;
 
@@ -245,7 +295,7 @@ class _DayNumber extends StatelessWidget {
                 fontWeight: isToday ? FontWeight.w600 : FontWeight.w400,
                 color: isToday
                     ? Colors.white
-                    : (inCurrentMonth ? tokens.neutral200 : tokens.neutral600),
+                    : (active ? tokens.neutral200 : tokens.neutral600),
               ),
             ),
           ),
@@ -262,11 +312,13 @@ class _LaneRow extends StatelessWidget {
   const _LaneRow({
     required this.lane,
     required this.today,
+    required this.projectsById,
     required this.onDayTap,
   });
 
   final List<_BarPlacement> lane;
   final DateTime today;
+  final Map<String, Project> projectsById;
   final ValueChanged<DateTime> onDayTap;
 
   @override
@@ -284,10 +336,11 @@ class _LaneRow extends StatelessWidget {
         Expanded(
           flex: span,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
             child: _TaskBar(
               placement: placement,
               today: today,
+              project: projectsById[placement.task.projectId],
               onTap: () => onDayTap(placement.task.dueDate!),
             ),
           ),
@@ -306,11 +359,13 @@ class _TaskBar extends StatelessWidget {
   const _TaskBar({
     required this.placement,
     required this.today,
+    required this.project,
     required this.onTap,
   });
 
   final _BarPlacement placement;
   final DateTime today;
+  final Project? project;
   final VoidCallback onTap;
 
   @override
@@ -328,7 +383,6 @@ class _TaskBar extends StatelessWidget {
     late final Color bg;
     late final Color fg;
     late final Color? border;
-    final icon = task.isChecked ? Icons.check_circle : Icons.circle_outlined;
 
     if (task.isChecked) {
       bg = tokens.neutral800;
@@ -348,50 +402,105 @@ class _TaskBar extends StatelessWidget {
       border = accent.withValues(alpha: 0.5);
     }
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.horizontal(
-        left: placement.isRangeStart
-            ? const Radius.circular(4)
-            : Radius.zero,
-        right: placement.isRangeEnd ? const Radius.circular(4) : Radius.zero,
-      ),
-      child: Container(
-        height: 20,
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          color: bg,
-          border: border != null ? Border.all(color: border) : null,
-          borderRadius: BorderRadius.horizontal(
-            left: placement.isRangeStart
-                ? const Radius.circular(4)
-                : Radius.zero,
-            right: placement.isRangeEnd
-                ? const Radius.circular(4)
-                : Radius.zero,
-          ),
+    final priorityColor = switch (task.priority) {
+      TaskPriority.high => NocturnePriority.high,
+      TaskPriority.med => NocturnePriority.med,
+      TaskPriority.low => NocturnePriority.low,
+      TaskPriority.none => null,
+    };
+    // The bar's own fill communicates status (done/overdue/spanning); the
+    // small dot is what marks whose project it's from, so the two never
+    // fight for the same color.
+    final originColor =
+        project != null ? accentPalette[project!.colorIndex] : tokens.neutral500;
+
+    final radius = BorderRadius.horizontal(
+      left: placement.isRangeStart ? const Radius.circular(5) : Radius.zero,
+      right: placement.isRangeEnd ? const Radius.circular(5) : Radius.zero,
+    );
+
+    return SizedBox(
+      height: 22,
+      child: Material(
+        color: bg,
+        elevation: 1,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: border != null ? BorderSide(color: border) : BorderSide.none,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 10, color: fg),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                task.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: fg,
-                  decoration: task.isChecked
-                      ? TextDecoration.lineThrough
-                      : null,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(
+            children: [
+              // A faint top-down sheen, so these read as the same glossy
+              // button surface as the rest of the app rather than a flat
+              // color swatch.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0),
+                        ],
+                        stops: const [0, 0.65],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: originColor,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      if (priorityColor != null) ...[
+                        Icon(Icons.flag, size: 10, color: priorityColor),
+                        const SizedBox(width: 3),
+                      ],
+                      Flexible(
+                        child: Text(
+                          task.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: fg,
+                            decoration: task.isChecked
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                      ),
+                      if (task.hasSubtasks) ...[
+                        const SizedBox(width: 3),
+                        Icon(
+                          Icons.checklist,
+                          size: 11,
+                          color: fg.withValues(alpha: 0.85),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
