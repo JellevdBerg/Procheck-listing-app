@@ -101,47 +101,78 @@ class MiniCalendar extends StatelessWidget {
               final hasTasks = daysWithTasks.contains(
                 DateTime(date.year, date.month, date.day),
               );
+              // A day's bar merges into its neighbor's whenever both sides
+              // of the join have tasks, so a multi-day task's underline
+              // reads as one continuous bar rather than per-day tick marks.
+              // Week wraps never connect — a row boundary is a hard break.
+              final column = index % 7;
+              final connectsLeft =
+                  hasTasks &&
+                  column != 0 &&
+                  daysWithTasks.contains(
+                    DateTime(date.year, date.month, date.day - 1),
+                  );
+              final connectsRight =
+                  hasTasks &&
+                  column != 6 &&
+                  daysWithTasks.contains(
+                    DateTime(date.year, date.month, date.day + 1),
+                  );
 
               return InkWell(
                 onTap: () => onDayTap(date),
                 borderRadius: BorderRadius.circular(4),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isToday ? accent : null,
-                    shape: BoxShape.circle,
-                    border: (!isToday && isSelected)
-                        ? Border.all(color: accent)
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$day',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isToday
-                              ? Colors.white
-                              : (isSelected ? accent : tokens.neutral300),
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      SizedBox(
-                        width: 8,
-                        height: 2,
-                        child: hasTasks
-                            ? DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: isToday ? Colors.white : accent,
-                                  borderRadius: BorderRadius.circular(1),
-                                ),
-                              )
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isToday ? accent : null,
+                        shape: BoxShape.circle,
+                        border: (!isToday && isSelected)
+                            ? Border.all(color: accent)
                             : null,
                       ),
-                    ],
-                  ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$day',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isToday
+                                  ? Colors.white
+                                  : (isSelected ? accent : tokens.neutral300),
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          const SizedBox(height: 2, width: 8),
+                        ],
+                      ),
+                    ),
+                    if (hasTasks)
+                      Positioned(
+                        left: connectsLeft ? -3 : 0,
+                        right: connectsRight ? -3 : 0,
+                        bottom: 2,
+                        height: 2,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: isToday ? Colors.white : accent,
+                            borderRadius: BorderRadius.horizontal(
+                              left: connectsLeft
+                                  ? Radius.zero
+                                  : const Radius.circular(1),
+                              right: connectsRight
+                                  ? Radius.zero
+                                  : const Radius.circular(1),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               );
             },
