@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
+import '../widgets/create_task_sheet.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 
 const _monthNames = [
@@ -69,6 +72,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   DateTime _anchor = _dateOnly(DateTime.now());
   _CalendarView _view = _CalendarView.month;
 
+  bool _taskmasterOn = false;
+  DateTime? _dragAnchor;
+  DateTime? _dragCursor;
+  Timer? _edgeAdvanceTimer;
+  DateTime? _edgeAdvanceTarget;
+
+  @override
+  void dispose() {
+    _edgeAdvanceTimer?.cancel();
+    super.dispose();
+  }
+
   void _step(int delta) {
     setState(() {
       _anchor = _view == _CalendarView.month
@@ -78,6 +93,84 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   void _goToToday() => setState(() => _anchor = _dateOnly(DateTime.now()));
+
+  void _handleDragStart(DateTime day) {
+    setState(() {
+      _dragAnchor = day;
+      _dragCursor = day;
+    });
+  }
+
+  /// Tracks the drag cursor, and — only in Month view, only once the pointer
+  /// has settled on a dimmed leading/trailing day for a moment — auto-steps
+  /// the month so a drag can extend a task across a month boundary without
+  /// the user having to let go and start over.
+  void _handleDragUpdate(DateTime hovered) {
+    setState(() => _dragCursor = hovered);
+    if (_view != _CalendarView.month) return;
+
+    final firstOfMonth = DateTime(_anchor.year, _anchor.month, 1);
+    final isNext = hovered.isAfter(
+      DateTime(firstOfMonth.year, firstOfMonth.month + 1, 0),
+    );
+    final isPrev = hovered.isBefore(firstOfMonth);
+
+    if (!isNext && !isPrev) {
+      _edgeAdvanceTimer?.cancel();
+      _edgeAdvanceTarget = null;
+      return;
+    }
+    if (_edgeAdvanceTarget != null && _isSameDay(_edgeAdvanceTarget!, hovered)) {
+      return;
+    }
+    _edgeAdvanceTimer?.cancel();
+    _edgeAdvanceTarget = hovered;
+    _edgeAdvanceTimer = Timer(const Duration(milliseconds: 650), () {
+      setState(() {
+        _anchor = DateTime(_anchor.year, _anchor.month + (isNext ? 1 : -1), 1);
+        _dragCursor = hovered;
+      });
+    });
+  }
+
+  Future<void> _handleDragEnd() async {
+    _edgeAdvanceTimer?.cancel();
+    _edgeAdvanceTarget = null;
+    final anchor = _dragAnchor;
+    final cursor = _dragCursor;
+    setState(() {
+      _dragAnchor = null;
+      _dragCursor = null;
+    });
+    if (anchor == null || cursor == null) return;
+    final start = anchor.isBefore(cursor) ? anchor : cursor;
+    final end = anchor.isBefore(cursor) ? cursor : anchor;
+    await _createTaskForRange(start, end);
+  }
+
+  void _cancelDrag() {
+    _edgeAdvanceTimer?.cancel();
+    _edgeAdvanceTarget = null;
+    setState(() {
+      _dragAnchor = null;
+      _dragCursor = null;
+    });
+  }
+
+  /// Opens the normal new-task sheet (title/project only — it never asks
+  /// about a due date) and, once a task comes back, sets its due date to
+  /// the range just drawn on the calendar.
+  Future<void> _createTaskForRange(DateTime start, DateTime end) async {
+    final task = await showCreateTaskSheet(context);
+    if (task == null || !mounted) return;
+    ref
+        .read(tasksProvider.notifier)
+        .setTaskDueDate(
+          task.id,
+          start,
+          dueDateEnd: _isSameDay(start, end) ? null : end,
+        );
+  }
 
   /// A task filed under a project opens that project, scrolled to it; an
   /// unfiled task has no project to open, so it falls back to the Day view
@@ -108,6 +201,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
+    final accent = context.nocturneAccent;
     final tasks = ref.watch(tasksProvider);
     final projects = ref.watch(projectsProvider);
     final projectsById = {for (final p in projects) p.id: p};
@@ -117,6 +211,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final gridStart = firstOfMonth.subtract(
       Duration(days: firstOfMonth.weekday - 1),
     );
+
+    final dragRange = (_dragAnchor != null && _dragCursor != null)
+        ? (
+            _dragAnchor!.isBefore(_dragCursor!) ? _dragAnchor! : _dragCursor!,
+            _dragAnchor!.isBefore(_dragCursor!) ? _dragCursor! : _dragAnchor!,
+          )
+        : null;
+    void onTaskDelete(Task task) =>
+        ref.read(tasksProvider.notifier).deleteTask(task.id);
 
     return Padding(
       padding: const EdgeInsets.all(16.8),
@@ -145,6 +248,33 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               const SizedBox(width: 4),
               Text(_headerLabel, style: Theme.of(context).textTheme.headlineSmall),
               const Spacer(),
+              Tooltip(
+                message: _taskmasterOn
+                    ? 'Click or drag a day to add a task there'
+                    : 'Turn on to click or drag on the calendar to add tasks',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Taskmaster',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _taskmasterOn ? accent : tokens.neutral500,
+                      ),
+                    ),
+                    Switch(
+                      value: _taskmasterOn,
+                      activeThumbColor: accent,
+                      onChanged: (v) {
+                        _cancelDrag();
+                        setState(() => _taskmasterOn = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               NocturneSegmented<_CalendarView>(
                 options: _CalendarView.values,
                 value: _view,
@@ -168,42 +298,86 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: tokens.neutral800),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: _view == _CalendarView.month
-                  ? Column(
-                      children: [
-                        for (var week = 0; week < 6; week++)
-                          Expanded(
-                            child: _WeekRow(
-                              rowStart: gridStart.add(Duration(days: week * 7)),
-                              month: _anchor,
-                              today: today,
-                              tasks: tasks,
-                              projectsById: projectsById,
-                              onDayTap: widget.onDaySelected,
-                              onTaskTap: _handleTaskTap,
-                              showTopBorder: week != 0,
-                              maxVisibleLanes: 4,
-                            ),
-                          ),
-                      ],
-                    )
-                  : _WeekRow(
-                      rowStart: _weekStartOf(_anchor),
-                      month: _anchor,
-                      today: today,
-                      tasks: tasks,
-                      projectsById: projectsById,
-                      onDayTap: widget.onDaySelected,
-                      onTaskTap: _handleTaskTap,
-                      dimOutOfRangeDays: false,
-                      showTopBorder: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final gridSize = constraints.biggest;
+                final rowsCount = _view == _CalendarView.month ? 6 : 1;
+                final weekStart = _view == _CalendarView.month
+                    ? gridStart
+                    : _weekStartOf(_anchor);
+
+                DateTime dateAt(Offset local) {
+                  final col = (local.dx / gridSize.width * 7)
+                      .floor()
+                      .clamp(0, 6);
+                  final row = (local.dy / gridSize.height * rowsCount)
+                      .floor()
+                      .clamp(0, rowsCount - 1);
+                  return weekStart.add(Duration(days: row * 7 + col));
+                }
+
+                return GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onPanStart: _taskmasterOn
+                      ? (d) => _handleDragStart(dateAt(d.localPosition))
+                      : null,
+                  onPanUpdate: _taskmasterOn
+                      ? (d) => _handleDragUpdate(dateAt(d.localPosition))
+                      : null,
+                  onPanEnd: _taskmasterOn ? (_) => _handleDragEnd() : null,
+                  onPanCancel: _taskmasterOn ? _cancelDrag : null,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: tokens.neutral800),
                     ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _view == _CalendarView.month
+                        ? Column(
+                            children: [
+                              for (var week = 0; week < 6; week++)
+                                Expanded(
+                                  child: _WeekRow(
+                                    rowStart: gridStart.add(
+                                      Duration(days: week * 7),
+                                    ),
+                                    month: _anchor,
+                                    today: today,
+                                    tasks: tasks,
+                                    projectsById: projectsById,
+                                    onDayTap: _taskmasterOn
+                                        ? (day) =>
+                                            _createTaskForRange(day, day)
+                                        : widget.onDaySelected,
+                                    onTaskTap: _handleTaskTap,
+                                    showTopBorder: week != 0,
+                                    maxVisibleLanes: 2,
+                                    taskmasterOn: _taskmasterOn,
+                                    onTaskDelete: onTaskDelete,
+                                    dragRange: dragRange,
+                                  ),
+                                ),
+                            ],
+                          )
+                        : _WeekRow(
+                            rowStart: _weekStartOf(_anchor),
+                            month: _anchor,
+                            today: today,
+                            tasks: tasks,
+                            projectsById: projectsById,
+                            onDayTap: _taskmasterOn
+                                ? (day) => _createTaskForRange(day, day)
+                                : widget.onDaySelected,
+                            onTaskTap: _handleTaskTap,
+                            dimOutOfRangeDays: false,
+                            showTopBorder: false,
+                            taskmasterOn: _taskmasterOn,
+                            onTaskDelete: onTaskDelete,
+                            dragRange: dragRange,
+                          ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -227,6 +401,9 @@ class _WeekRow extends StatelessWidget {
     this.dimOutOfRangeDays = true,
     this.showTopBorder = true,
     this.maxVisibleLanes,
+    this.taskmasterOn = false,
+    required this.onTaskDelete,
+    this.dragRange,
   });
 
   final DateTime rowStart;
@@ -243,6 +420,13 @@ class _WeekRow extends StatelessWidget {
   /// into a per-day "+N" overflow chip — null means show every lane
   /// (scrolling locally if they don't fit), used by the Week view.
   final int? maxVisibleLanes;
+
+  final bool taskmasterOn;
+  final void Function(Task task) onTaskDelete;
+
+  /// The inclusive [start, end] of a Taskmaster drag-in-progress, if any —
+  /// days within it get a highlight tint.
+  final (DateTime, DateTime)? dragRange;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +469,13 @@ class _WeekRow extends StatelessWidget {
                               month.month,
                       isWeekend: i == 5 || i == 6,
                       showDivider: i < 6,
+                      isDragSelected: dragRange != null &&
+                          !rowStart
+                              .add(Duration(days: i))
+                              .isBefore(dragRange!.$1) &&
+                          !rowStart
+                              .add(Duration(days: i))
+                              .isAfter(dragRange!.$2),
                     ),
                   ),
               ],
@@ -325,6 +516,8 @@ class _WeekRow extends StatelessWidget {
                             today: today,
                             projectsById: projectsById,
                             onTaskTap: onTaskTap,
+                            taskmasterOn: taskmasterOn,
+                            onTaskDelete: onTaskDelete,
                           ),
                           const SizedBox(height: 3),
                         ],
@@ -356,15 +549,18 @@ class _DayCellBackground extends StatelessWidget {
     required this.inCurrentMonth,
     required this.isWeekend,
     required this.showDivider,
+    this.isDragSelected = false,
   });
 
   final bool inCurrentMonth;
   final bool isWeekend;
   final bool showDivider;
+  final bool isDragSelected;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
+    final accent = context.nocturneAccent;
 
     Widget fill;
     if (!inCurrentMonth) {
@@ -396,7 +592,18 @@ class _DayCellBackground extends StatelessWidget {
             : null,
       ),
       position: DecorationPosition.foreground,
-      child: SizedBox.expand(child: fill),
+      child: SizedBox.expand(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            fill,
+            if (isDragSelected)
+              DecoratedBox(
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.22)),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -486,12 +693,16 @@ class _LaneRow extends StatelessWidget {
     required this.today,
     required this.projectsById,
     required this.onTaskTap,
+    required this.taskmasterOn,
+    required this.onTaskDelete,
   });
 
   final List<_BarPlacement> lane;
   final DateTime today;
   final Map<String, Project> projectsById;
   final void Function(Task task, BuildContext rowContext) onTaskTap;
+  final bool taskmasterOn;
+  final void Function(Task task) onTaskDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -514,6 +725,8 @@ class _LaneRow extends StatelessWidget {
               today: today,
               project: projectsById[placement.task.projectId],
               onTap: (ctx) => onTaskTap(placement.task, ctx),
+              taskmasterOn: taskmasterOn,
+              onDelete: () => onTaskDelete(placement.task),
             ),
           ),
         ),
@@ -671,6 +884,8 @@ void _showDayTasksDialog(
                           // dialog's — that one unmounts the moment it pops.
                           onTaskTap(task, context);
                         },
+                        taskmasterOn: false,
+                        onDelete: () {},
                       );
                     },
                   ),
@@ -684,28 +899,41 @@ void _showDayTasksDialog(
   );
 }
 
-class _TaskBar extends StatelessWidget {
+class _TaskBar extends StatefulWidget {
   const _TaskBar({
     required this.placement,
     required this.today,
     required this.project,
     required this.onTap,
+    required this.taskmasterOn,
+    required this.onDelete,
   });
 
   final _BarPlacement placement;
   final DateTime today;
   final Project? project;
   final void Function(BuildContext rowContext) onTap;
+  final bool taskmasterOn;
+  final VoidCallback onDelete;
+
+  @override
+  State<_TaskBar> createState() => _TaskBarState();
+}
+
+class _TaskBarState extends State<_TaskBar> {
+  bool _hovering = false;
 
   @override
   Widget build(BuildContext context) {
+    final placement = widget.placement;
+    final project = widget.project;
     final tokens = context.nocturne;
     final accent = context.nocturneAccent;
     final task = placement.task;
 
     final overallEnd = task.dueDateEnd ?? task.dueDate!;
-    final isOverdue =
-        !task.isChecked && _dateOnly(overallEnd).isBefore(_dateOnly(today));
+    final isOverdue = !task.isChecked &&
+        _dateOnly(overallEnd).isBefore(_dateOnly(widget.today));
 
     // Matches the app's own buttons (see NocturneButton's primary variant):
     // a tinted, outlined pill rather than a flat color swatch — just with
@@ -726,15 +954,18 @@ class _TaskBar extends StatelessWidget {
       TaskPriority.none => null,
     };
     final originColor =
-        project != null ? accentPalette[project!.colorIndex] : tokens.neutral500;
-    final originLabel = project != null ? project!.name : 'Unfiled';
+        project != null ? accentPalette[project.colorIndex] : tokens.neutral500;
+    final originLabel = project != null ? project.name : 'Unfiled';
 
     final radius = BorderRadius.horizontal(
       left: placement.isRangeStart ? const Radius.circular(13) : Radius.zero,
       right: placement.isRangeEnd ? const Radius.circular(13) : Radius.zero,
     );
 
-    return SizedBox(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: SizedBox(
       height: 27,
       child: Material(
         color: bg,
@@ -744,7 +975,7 @@ class _TaskBar extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => onTap(context),
+          onTap: () => widget.onTap(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 9),
             child: Row(
@@ -804,9 +1035,39 @@ class _TaskBar extends StatelessWidget {
                     color: fg.withValues(alpha: 0.85),
                   ),
                 ],
+                if (widget.taskmasterOn && _hovering) ...[
+                  const SizedBox(width: 4),
+                  _DeleteDot(onTap: widget.onDelete),
+                ],
               ],
             ),
           ),
+        ),
+      ),
+    ),
+    );
+  }
+}
+
+/// The small "x" that appears at a bar's trailing edge, in Taskmaster
+/// mode, once the pointer hovers it — a quick way to delete the task
+/// without opening it first.
+class _DeleteDot extends StatelessWidget {
+  const _DeleteDot({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFF3B30).withValues(alpha: 0.18),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const Padding(
+          padding: EdgeInsets.all(2),
+          child: Icon(Icons.close, size: 12, color: Color(0xFFFF3B30)),
         ),
       ),
     );
