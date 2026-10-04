@@ -502,6 +502,18 @@ class _TaskBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 7),
             child: Row(
               children: [
+                if (isOverdue) ...[
+                  const Text(
+                    '!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFFFF3B30),
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                ],
                 if (priorityColor != null) ...[
                   Icon(Icons.flag, size: 10, color: priorityColor),
                   const SizedBox(width: 3),
