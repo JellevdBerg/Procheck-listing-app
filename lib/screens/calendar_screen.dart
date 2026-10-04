@@ -372,9 +372,15 @@ class _DayCellBackground extends StatelessWidget {
         decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.18)),
       );
     } else if (isWeekend) {
-      fill = CustomPaint(
-        painter: _DiagonalStripesPainter(
-          color: tokens.neutral700.withValues(alpha: 0.4),
+      // CustomPaint draws straight onto the ambient canvas with no clip of
+      // its own, and the stripe lines intentionally run past this cell's
+      // right edge — without ClipRect that tail paints straight over
+      // whatever cell comes next instead of stopping at this one's border.
+      fill = ClipRect(
+        child: CustomPaint(
+          painter: _DiagonalStripesPainter(
+            color: tokens.neutral700.withValues(alpha: 0.4),
+          ),
         ),
       );
     } else {
