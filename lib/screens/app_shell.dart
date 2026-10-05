@@ -19,6 +19,7 @@ import 'dashboard_screen.dart';
 import 'day_screen.dart';
 import 'project_detail_overlay.dart';
 import 'projects_screen.dart';
+import 'search_screen.dart';
 import 'settings_screen.dart';
 import 'templates_screen.dart';
 import 'today_screen.dart';
@@ -349,6 +350,10 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.projects => ProjectsScreen(
         onShowUndo: _showUndo,
         onOpenProject: _openProjectFromCard,
+      ),
+      AppScreen.search => SearchScreen(
+        onOpenTask: (projectId, taskId, cardContext) =>
+            _openProjectFromCard(projectId, cardContext, taskId: taskId),
       ),
       AppScreen.today => const TodayScreen(),
       AppScreen.upcoming => const UpcomingScreen(),

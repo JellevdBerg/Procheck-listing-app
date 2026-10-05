@@ -123,6 +123,15 @@ class AppSidebar extends ConsumerWidget {
                     child: Column(
                       children: [
                         _NavRow(
+                          icon: Icons.search,
+                          label: 'Search',
+                          expanded: expanded,
+                          active: currentScreen == AppScreen.search,
+                          accent: accent,
+                          onTap: () => onScreenSelected(AppScreen.search),
+                        ),
+                        const SizedBox(height: 2),
+                        _NavRow(
                           icon: Icons.dashboard_outlined,
                           label: 'Dashboard',
                           count: dashboardCount,
