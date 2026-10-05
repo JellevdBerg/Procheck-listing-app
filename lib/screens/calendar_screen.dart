@@ -369,7 +369,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                         : widget.onDaySelected,
                                     onTaskTap: _handleTaskTap,
                                     showTopBorder: week != 0,
-                                    maxVisibleLanes: 3,
+                                    maxVisibleLanes: 4,
                                     taskmasterOn: _taskmasterOn,
                                     onTaskDelete: onTaskDelete,
                                     dragRange: dragRange,
@@ -505,12 +505,13 @@ class _WeekRow extends StatelessWidget {
 
     final cap = maxVisibleLanes;
     final overflow = cap != null && lanes.length > cap;
-    // When overflowing, one of the cap slots is spent on the "+N more"
-    // chip instead of a lane, so the row's total height never grows past
-    // what the non-overflowing (exactly-cap) case already needs.
-    final visibleLanes = overflow ? lanes.sublist(0, cap - 1) : lanes;
+    // All [cap] lanes always show in full — the "+N more" chip is an extra
+    // row appended below them, not a slot borrowed from the cap, so a full
+    // day is always exactly [cap] real pills tall plus one chip row.
+    final visibleLanes =
+        cap != null ? lanes.sublist(0, math.min(cap, lanes.length)) : lanes;
     final hiddenLanes =
-        overflow ? lanes.sublist(cap - 1) : const <List<_BarPlacement>>[];
+        overflow ? lanes.sublist(cap) : const <List<_BarPlacement>>[];
     final overflowCounts = List<int>.generate(
       7,
       (day) => hiddenLanes
