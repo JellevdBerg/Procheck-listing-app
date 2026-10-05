@@ -249,6 +249,22 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final firstOfMonth = DateTime(_anchor.year, _anchor.month, 1);
     final gridStart = _addDays(firstOfMonth, -(firstOfMonth.weekday - 1));
 
+    // Scanning the full, unscoped task list happens once here instead of
+    // once per _WeekRow (6x in month view) — each row's own _computeLanes
+    // then only scans this already-narrow, visible-window subset.
+    final visibleRangeStart = _view == _CalendarView.month
+        ? gridStart
+        : _weekStartOf(_anchor);
+    final visibleRangeEnd = _addDays(
+      visibleRangeStart,
+      _view == _CalendarView.month ? 41 : 6,
+    );
+    final visibleTasks = _tasksOverlappingRange(
+      tasks,
+      visibleRangeStart,
+      visibleRangeEnd,
+    );
+
     final dragRange = (_dragAnchor != null && _dragCursor != null)
         ? (
             _dragAnchor!.isBefore(_dragCursor!) ? _dragAnchor! : _dragCursor!,
@@ -370,7 +386,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                     rowStart: _addDays(gridStart, week * 7),
                                     month: _anchor,
                                     today: today,
-                                    tasks: tasks,
+                                    tasks: visibleTasks,
                                     projectsById: projectsById,
                                     onDayTap: _taskmasterOn
                                         ? (day) =>
@@ -390,7 +406,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             rowStart: _weekStartOf(_anchor),
                             month: _anchor,
                             today: today,
-                            tasks: tasks,
+                            tasks: visibleTasks,
                             projectsById: projectsById,
                             onDayTap: _taskmasterOn
                                 ? (day) => _createTaskForRange(day, day)
@@ -1777,6 +1793,24 @@ class _BarPlacement {
   final int colEnd;
   final bool isRangeStart;
   final bool isRangeEnd;
+}
+
+/// Every task whose due-date span overlaps [rangeStart]..[rangeEnd] at
+/// all — a single O(n) pass over the full, unscoped task list, done once
+/// per calendar build rather than once per [_WeekRow] (see
+/// [CalendarScreen.build]). Uses the same overlap rule as [_computeLanes]
+/// itself, just without narrowing to day columns.
+List<Task> _tasksOverlappingRange(
+  List<Task> tasks,
+  DateTime rangeStart,
+  DateTime rangeEnd,
+) {
+  return tasks.where((task) {
+    if (task.dueDate == null) return false;
+    final start = _dateOnly(task.dueDate!);
+    final end = task.dueDateEnd == null ? start : _dateOnly(task.dueDateEnd!);
+    return !(end.isBefore(rangeStart) || start.isAfter(rangeEnd));
+  }).toList();
 }
 
 /// Greedily assigns each task active during [rowStart]..[rowEnd] to the

@@ -62,27 +62,26 @@ class ProjectSummary {
 /// Builds one [ProjectSummary] per project in [projects] from [tasks],
 /// ranked the same way the table itself is meant to read: a project with an
 /// overdue task first, then by how much open work is left, then by name.
+///
+/// Groups [tasks] by project once up front rather than re-scanning the
+/// whole list per project (as a naive `tasks.where((t) => t.projectId ==
+/// project.id)` per project would) — this is O(tasks + projects) instead of
+/// O(projects × tasks), which matters once either list gets large.
 List<ProjectSummary> computeProjectSummaries(
   List<Project> projects,
   List<Task> tasks,
   DateTime now,
 ) {
+  final tasksByProject = <String, List<Task>>{};
+  for (final task in tasks) {
+    final projectId = task.projectId;
+    if (projectId == null) continue;
+    (tasksByProject[projectId] ??= []).add(task);
+  }
+
   final summaries = [
     for (final project in projects)
-      ProjectSummary(
-        project: project,
-        total: tasks.where((t) => t.projectId == project.id).length,
-        done: tasks
-            .where((t) => t.projectId == project.id && t.isChecked)
-            .length,
-        hasOverdue: tasks.any(
-          (t) =>
-              t.projectId == project.id &&
-              !t.isChecked &&
-              t.dueDate != null &&
-              !t.dueDate!.isAfter(now),
-        ),
-      ),
+      _summaryFor(project, tasksByProject[project.id] ?? const [], now),
   ];
 
   summaries.sort((a, b) {
@@ -92,6 +91,28 @@ List<ProjectSummary> computeProjectSummaries(
     return a.project.name.toLowerCase().compareTo(b.project.name.toLowerCase());
   });
   return summaries;
+}
+
+ProjectSummary _summaryFor(
+  Project project,
+  List<Task> projectTasks,
+  DateTime now,
+) {
+  var done = 0;
+  var hasOverdue = false;
+  for (final task in projectTasks) {
+    if (task.isChecked) {
+      done++;
+    } else if (task.dueDate != null && !task.dueDate!.isAfter(now)) {
+      hasOverdue = true;
+    }
+  }
+  return ProjectSummary(
+    project: project,
+    total: projectTasks.length,
+    done: done,
+    hasOverdue: hasOverdue,
+  );
 }
 
 /// The Dashboard: a header, then the shared [ProjectsOverview] scoped to
@@ -559,8 +580,21 @@ class _AttentionCard extends StatelessWidget {
   final void Function(String projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
+  /// This card summarizes what needs attention rather than being a full
+  /// task list — at most this many rows render, newest/most-urgent first
+  /// (callers already sort [tasks] that way), with the rest folded into a
+  /// trailing "+N more" note. Keeps the card's height sane and avoids
+  /// building hundreds of rows inline in the Dashboard's scroll view if a
+  /// workspace ever accumulates that many overdue/due-today tasks at once.
+  static const _maxVisibleRows = 20;
+
   @override
   Widget build(BuildContext context) {
+    final visibleTasks = tasks.length > _maxVisibleRows
+        ? tasks.sublist(0, _maxVisibleRows)
+        : tasks;
+    final hiddenCount = tasks.length - visibleTasks.length;
+
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -582,13 +616,23 @@ class _AttentionCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 8),
                 child: Column(
                   children: [
-                    for (var i = 0; i < tasks.length; i++) ...[
+                    for (var i = 0; i < visibleTasks.length; i++) ...[
                       if (i > 0) const Divider(height: 1),
                       _AttentionRow(
-                        task: tasks[i],
-                        project: projectById[tasks[i].projectId],
+                        task: visibleTasks[i],
+                        project: projectById[visibleTasks[i].projectId],
                         now: now,
                         onOpenTask: onOpenTask,
+                      ),
+                    ],
+                    if (hiddenCount > 0) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '+$hiddenCount more',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
                     ],
                   ],

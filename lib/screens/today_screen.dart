@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
 import '../widgets/project_name_lookup.dart';
 import '../widgets/smart_view_task_row.dart';
 import 'empty_state.dart';
@@ -35,25 +36,42 @@ class TodayScreen extends ConsumerWidget {
     }
 
     final projectNames = buildProjectNameLookup(projects);
+    final tokens = context.nocturne;
 
-    return ListView(
-      padding: const EdgeInsets.all(16.8),
-      children: [
-        Text('Today', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16.8),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11.2),
-            child: Column(
-              children: [
-                for (final task in todayTasks)
-                  SmartViewTaskRow(
+    // A CustomScrollView + SliverList, not the Column-in-a-Card used
+    // elsewhere in the app, so that with thousands of tasks due today only
+    // the rows actually on screen get built — the DecoratedSliver
+    // replicates the app's flat (elevation: 0) CardThemeData so this looks
+    // identical to a real Card.
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 0),
+          sliver: SliverToBoxAdapter(
+            child: Text('Today', style: Theme.of(context).textTheme.headlineSmall),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 16.8),
+          sliver: DecoratedSliver(
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              borderRadius: BorderRadius.circular(NocturneRadius.md),
+              border: Border.all(color: tokens.neutral800),
+            ),
+            sliver: SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 11.2),
+              sliver: SliverList.builder(
+                itemCount: todayTasks.length,
+                itemBuilder: (context, index) {
+                  final task = todayTasks[index];
+                  return SmartViewTaskRow(
                     task: task,
                     reduceMotion: reduceMotion,
                     projectName: projectNameFor(projectNames, task.projectId),
-                  ),
-              ],
+                  );
+                },
+              ),
             ),
           ),
         ),

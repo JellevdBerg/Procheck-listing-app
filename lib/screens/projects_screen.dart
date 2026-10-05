@@ -65,6 +65,17 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               .where((p) => p.name.toLowerCase().contains(query))
               .toList();
 
+    // Grouped once per build rather than once per card — each card
+    // re-scanning the full task list itself turns the grid into an
+    // O(projects × tasks) rebuild as either side grows into the
+    // hundreds/thousands.
+    final tasksByProject = <String, List<Task>>{};
+    for (final task in tasks) {
+      final projectId = task.projectId;
+      if (projectId == null) continue;
+      (tasksByProject[projectId] ??= []).add(task);
+    }
+
     return ListView(
       key: const Key('projects-scroll'),
       padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 22.4),
@@ -112,7 +123,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               ),
             )
           else
-            _buildGrid(context, projects, tasks, reduceMotion),
+            _buildGrid(context, projects, tasksByProject, reduceMotion),
           const SizedBox(height: 16.8),
         ],
         Row(
@@ -201,7 +212,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   Widget _buildGrid(
     BuildContext context,
     List<Project> projects,
-    List<Task> tasks,
+    Map<String, List<Task>> tasksByProject,
     bool reduceMotion,
   ) {
     return LayoutBuilder(
@@ -248,7 +259,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 project: project,
                 featured: true,
                 reduceMotion: reduceMotion,
-                tasks: tasks.where((t) => t.projectId == project.id).toList(),
+                tasks: tasksByProject[project.id] ?? const [],
                 onTap: () => widget.onOpenProject(project.id, cardContext),
                 onDelete: triggerRemoval,
                 onArchive: () => _archiveProject(project),

@@ -57,6 +57,16 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
         ? archived
         : archived.where((p) => p.name.toLowerCase().contains(query)).toList();
 
+    // Counted once per build rather than once per row — each row scanning
+    // the full task list itself turns this into an O(archived projects ×
+    // tasks) rebuild as either side grows into the hundreds/thousands.
+    final taskCountByProject = <String, int>{};
+    for (final task in tasks) {
+      final projectId = task.projectId;
+      if (projectId == null) continue;
+      taskCountByProject[projectId] = (taskCountByProject[projectId] ?? 0) + 1;
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16.8),
       child: Column(
@@ -96,10 +106,11 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 11.2),
                   itemCount: visible.length,
-                  itemBuilder: (context, index) =>
-                      _ArchivedRow(project: visible[index], taskCount: tasks
-                          .where((t) => t.projectId == visible[index].id)
-                          .length, onOpenProject: widget.onOpenProject),
+                  itemBuilder: (context, index) => _ArchivedRow(
+                    project: visible[index],
+                    taskCount: taskCountByProject[visible[index].id] ?? 0,
+                    onOpenProject: widget.onOpenProject,
+                  ),
                 ),
               ),
             ),
