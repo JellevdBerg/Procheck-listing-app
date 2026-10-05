@@ -9,6 +9,7 @@ import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'blurred_dialog.dart';
+import 'task_tile.dart';
 
 Future<Task?> showCreateTaskSheet(
   BuildContext context, {
@@ -46,6 +47,10 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
   String? _selectedProjectId;
   bool _nameEditedByUser = false;
 
+  /// Set once the task is created, switching the sheet to stage 2 (detail
+  /// editing) in place rather than closing the dialog.
+  String? _createdTaskId;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +69,11 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final createdTaskId = _createdTaskId;
+    if (createdTaskId != null) {
+      return _buildDetailStage(context, createdTaskId);
+    }
+
     final templates = ref.watch(taskTemplatesProvider);
     final projects = ref.watch(projectsProvider);
 
@@ -143,8 +153,8 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: _create,
-              child: const Text('Create'),
+              onPressed: _createAndContinue,
+              child: const Text('Continue'),
             ),
           ),
         ],
@@ -152,7 +162,7 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
     );
   }
 
-  void _create() {
+  void _createAndContinue() {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
 
@@ -174,6 +184,47 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
       );
     }
 
-    Navigator.of(context).pop(task);
+    setState(() => _createdTaskId = task.id);
+  }
+
+  /// Stage 2: the task now exists, so this re-reads it live from
+  /// [tasksProvider] (like [TaskTile]'s own ancestors do) and reuses
+  /// [TaskDetailEditor] to fill in priority/due date/subtasks/notes/
+  /// attachments — the same editing UI/logic as an existing task's detail
+  /// view, rather than a separate implementation.
+  Widget _buildDetailStage(BuildContext context, String taskId) {
+    // Watches the whole list rather than `.select`-ing the one task:
+    // Task is a mutable HiveObject with identity equality, so a `select`
+    // never sees a "different" value when its fields mutate in place and
+    // would silently stop rebuilding this dialog on every edit.
+    final task = ref
+        .watch(tasksProvider)
+        .firstWhere((t) => t.id == taskId);
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(task.title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          TaskDetailEditor(task: task, padding: EdgeInsets.zero),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(task),
+              child: const Text('Done'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

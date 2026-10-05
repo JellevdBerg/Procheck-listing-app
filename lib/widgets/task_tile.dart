@@ -61,9 +61,6 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   static const _sideBySideBreakpoint = 480.0;
 
   bool _expanded = false;
-  late final TextEditingController _notesController;
-  late final FocusNode _notesFocusNode;
-  final _newSubtaskController = TextEditingController();
   Timer? _autoRemoveTimer;
 
   // Snapshotting the checked flag as a primitive rather than comparing
@@ -83,19 +80,11 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   void initState() {
     super.initState();
     _lastIsChecked = widget.task.isChecked;
-    _notesController = TextEditingController(text: widget.task.notes ?? '');
-    _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
   }
 
   @override
   void didUpdateWidget(covariant TaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the field in sync with external changes (e.g. undo elsewhere)
-    // without clobbering text the user is actively editing.
-    if (!_notesFocusNode.hasFocus &&
-        widget.task.notes != oldWidget.task.notes) {
-      _notesController.text = widget.task.notes ?? '';
-    }
 
     final wasChecked = _lastIsChecked;
     final isChecked = widget.task.isChecked;
@@ -121,22 +110,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   @override
   void dispose() {
     _autoRemoveTimer?.cancel();
-    _notesFocusNode.removeListener(_onNotesFocusChange);
-    _notesFocusNode.dispose();
-    _notesController.dispose();
-    _newSubtaskController.dispose();
     super.dispose();
-  }
-
-  void _onNotesFocusChange() {
-    if (!_notesFocusNode.hasFocus) _saveNotes();
-  }
-
-  void _saveNotes() {
-    final text = _notesController.text.trim();
-    ref
-        .read(tasksProvider.notifier)
-        .setTaskNotes(widget.task.id, text.isEmpty ? null : text);
   }
 
   @override
@@ -228,26 +202,12 @@ class _TaskTileState extends ConsumerState<TaskTile> {
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
           child: _expanded
-              ? _ExpandedTaskDetail(
-                  task: task,
-                  notesController: _notesController,
-                  notesFocusNode: _notesFocusNode,
-                  newSubtaskController: _newSubtaskController,
-                  onAddSubtask: () => _addSubtask(notifier),
-                  breakpoint: _sideBySideBreakpoint,
-                )
+              ? TaskDetailEditor(task: task, breakpoint: _sideBySideBreakpoint)
               : const SizedBox(width: double.infinity),
         ),
         const Divider(height: 1),
       ],
     );
-  }
-
-  void _addSubtask(TasksNotifier notifier) {
-    final title = _newSubtaskController.text.trim();
-    if (title.isEmpty) return;
-    notifier.addSubtask(widget.task.id, title);
-    _newSubtaskController.clear();
   }
 }
 
@@ -300,17 +260,20 @@ String formatDueLabel(Task task, DateFormatOption format) {
   return '${_formatDateOnly(dueDate, format)} - ${_formatDateOnly(dueDateEnd, format)}';
 }
 
-/// The expanded region of a [TaskTile]: subtasks below the task, with a
-/// notes panel that sits to the right when there's room for it and stacks
-/// underneath otherwise.
-class _ExpandedTaskDetail extends ConsumerWidget {
-  const _ExpandedTaskDetail({
+/// The due date/priority/subtasks/notes/attachments editing region shared
+/// by [TaskTile]'s expanded row and the task-creation sheet: subtasks below,
+/// with a notes panel that sits to the right when there's room for it and
+/// stacks underneath otherwise.
+class ExpandedTaskDetail extends ConsumerWidget {
+  const ExpandedTaskDetail({
+    super.key,
     required this.task,
     required this.notesController,
     required this.notesFocusNode,
     required this.newSubtaskController,
     required this.onAddSubtask,
     required this.breakpoint,
+    this.padding = const EdgeInsets.fromLTRB(56, 0, 16, 16),
   });
 
   final Task task;
@@ -320,10 +283,15 @@ class _ExpandedTaskDetail extends ConsumerWidget {
   final VoidCallback onAddSubtask;
   final double breakpoint;
 
+  /// Defaults to [TaskTile]'s own indent (aligning under its checkbox +
+  /// title); a caller without that leading row, like the task-creation
+  /// sheet, passes its own.
+  final EdgeInsetsGeometry padding;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(56, 0, 16, 16),
+      padding: padding,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final subtasks = _SubtasksSection(
@@ -390,6 +358,92 @@ class _ExpandedTaskDetail extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// [ExpandedTaskDetail] plus the controllers/lifecycle it needs — the
+/// reusable, self-contained version of the editing region [TaskTile] shows
+/// once expanded. Anywhere else that needs the same due
+/// date/priority/subtasks/notes/attachments editing for a task (the
+/// task-creation sheet, notably) uses this directly instead of
+/// re-implementing that wiring.
+class TaskDetailEditor extends ConsumerStatefulWidget {
+  const TaskDetailEditor({
+    super.key,
+    required this.task,
+    this.breakpoint = 480,
+    this.padding = const EdgeInsets.fromLTRB(56, 0, 16, 16),
+  });
+
+  final Task task;
+  final double breakpoint;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  ConsumerState<TaskDetailEditor> createState() => _TaskDetailEditorState();
+}
+
+class _TaskDetailEditorState extends ConsumerState<TaskDetailEditor> {
+  late final TextEditingController _notesController;
+  late final FocusNode _notesFocusNode;
+  final _newSubtaskController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _notesController = TextEditingController(text: widget.task.notes ?? '');
+    _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskDetailEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the field in sync with external changes (e.g. undo elsewhere)
+    // without clobbering text the user is actively editing.
+    if (!_notesFocusNode.hasFocus &&
+        widget.task.notes != oldWidget.task.notes) {
+      _notesController.text = widget.task.notes ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _notesFocusNode.removeListener(_onNotesFocusChange);
+    _notesFocusNode.dispose();
+    _notesController.dispose();
+    _newSubtaskController.dispose();
+    super.dispose();
+  }
+
+  void _onNotesFocusChange() {
+    if (!_notesFocusNode.hasFocus) _saveNotes();
+  }
+
+  void _saveNotes() {
+    final text = _notesController.text.trim();
+    ref
+        .read(tasksProvider.notifier)
+        .setTaskNotes(widget.task.id, text.isEmpty ? null : text);
+  }
+
+  void _addSubtask() {
+    final title = _newSubtaskController.text.trim();
+    if (title.isEmpty) return;
+    ref.read(tasksProvider.notifier).addSubtask(widget.task.id, title);
+    _newSubtaskController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpandedTaskDetail(
+      task: widget.task,
+      notesController: _notesController,
+      notesFocusNode: _notesFocusNode,
+      newSubtaskController: _newSubtaskController,
+      onAddSubtask: _addSubtask,
+      breakpoint: widget.breakpoint,
+      padding: widget.padding,
     );
   }
 }
