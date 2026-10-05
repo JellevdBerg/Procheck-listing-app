@@ -27,6 +27,16 @@ class Attachment extends HiveObject {
     return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+  @override
+  bool operator ==(Object other) =>
+      other is Attachment &&
+      other.name == name &&
+      other.size == size &&
+      other.path == path;
+
+  @override
+  int get hashCode => Object.hash(name, size, path);
+
   Map<String, dynamic> toJson() => {'name': name, 'size': size, 'path': path};
 
   factory Attachment.fromJson(Map<String, dynamic> json) => Attachment(

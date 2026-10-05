@@ -193,13 +193,13 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
   /// attachments — the same editing UI/logic as an existing task's detail
   /// view, rather than a separate implementation.
   Widget _buildDetailStage(BuildContext context, String taskId) {
-    // Watches the whole list rather than `.select`-ing the one task:
-    // Task is a mutable HiveObject with identity equality, so a `select`
-    // never sees a "different" value when its fields mutate in place and
-    // would silently stop rebuilding this dialog on every edit.
-    final task = ref
-        .watch(tasksProvider)
-        .firstWhere((t) => t.id == taskId);
+    // Scoped to just this one task: Task now has value equality and every
+    // TasksNotifier mutator builds a fresh Task instance via copyWith
+    // rather than mutating the box's cached one in place, so `select` sees
+    // a genuinely different value on every edit and rebuilds correctly.
+    final task = ref.watch(
+      tasksProvider.select((tasks) => tasks.firstWhere((t) => t.id == taskId)),
+    );
 
     return SingleChildScrollView(
       padding: EdgeInsets.only(

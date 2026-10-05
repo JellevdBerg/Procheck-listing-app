@@ -110,35 +110,37 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
     return project;
   }
 
+  /// Persists [project] — a freshly built [Project.copyWith] instance,
+  /// never the same object already in [state] — and swaps it into [state]
+  /// in place. See [TasksNotifier._persist] for why a new instance (rather
+  /// than mutating the box's cached one) is required for value-equality
+  /// selectors to detect the edit.
+  void _persist(Project project) {
+    unawaited(_box.put(project.id, project));
+    state = [
+      for (final p in state)
+        if (p.id == project.id) project else p,
+    ];
+  }
+
   void renameProject(String id, String name) {
     final project = _box.get(id);
     if (project == null) return;
-    project.name = name;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    _persist(project.copyWith(name: name));
     _sortState();
   }
 
   void setProjectColor(String id, int colorIndex) {
     final project = _box.get(id);
     if (project == null) return;
-    project.colorIndex = colorIndex;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    _persist(project.copyWith(colorIndex: colorIndex));
   }
 
   /// Marks a project as just opened, so it sorts to the front.
   void touchProject(String id) {
     final project = _box.get(id);
     if (project == null) return;
-    project.lastOpenedAt = DateTime.now();
-    unawaited(project.save());
+    _persist(project.copyWith(lastOpenedAt: DateTime.now()));
     _sortState();
   }
 
@@ -147,23 +149,13 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   void archiveProject(String id) {
     final project = _box.get(id);
     if (project == null) return;
-    project.archived = true;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    _persist(project.copyWith(archived: true));
   }
 
   void toggleFavorite(String id) {
     final project = _box.get(id);
     if (project == null) return;
-    project.favorite = !project.favorite;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    _persist(project.copyWith(favorite: !project.favorite));
   }
 
   /// Appends an entry to [id]'s Activity log — called by [TasksNotifier] for
@@ -180,46 +172,39 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   void logActivity(String id, ActivityEntry entry) {
     final project = _box.get(id);
     if (project == null) return;
-    final updated = [...project.activityLog, entry];
-    project.activityLog = updated.length > _maxActivityLogEntries
-        ? updated.sublist(updated.length - _maxActivityLogEntries)
-        : updated;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    final log = [...project.activityLog, entry];
+    _persist(
+      project.copyWith(
+        activityLog: log.length > _maxActivityLogEntries
+            ? log.sublist(log.length - _maxActivityLogEntries)
+            : log,
+      ),
+    );
   }
 
   void addComment(String id, String author, String text) {
     final project = _box.get(id);
     if (project == null) return;
-    project.comments = [
-      ...project.comments,
-      ProjectComment(
-        id: const Uuid().v4(),
-        author: author,
-        text: text,
-        timestamp: DateTime.now(),
+    _persist(
+      project.copyWith(
+        comments: [
+          ...project.comments,
+          ProjectComment(
+            id: const Uuid().v4(),
+            author: author,
+            text: text,
+            timestamp: DateTime.now(),
+          ),
+        ],
       ),
-    ];
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    );
   }
 
   /// Puts an archived project back in the main grid.
   void unarchiveProject(String id) {
     final project = _box.get(id);
     if (project == null) return;
-    project.archived = false;
-    unawaited(project.save());
-    state = [
-      for (final p in state)
-        if (p.id == id) project else p,
-    ];
+    _persist(project.copyWith(archived: false));
     _sortState();
   }
 
