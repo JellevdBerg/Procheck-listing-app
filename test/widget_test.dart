@@ -63,11 +63,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The "New task" dialog is two stages: a "Continue" button creates the
+  // task and advances to a detail-editing stage (priority/due date/
+  // subtasks/notes), closed here with "Done" without touching any of it.
   Future<void> createTask(WidgetTester tester, String name) async {
     await tester.tap(find.text('New task'));
     await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
-    await tester.tap(find.text('Create'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
   }
 
@@ -77,7 +82,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
-    await tester.tap(find.text('Create'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
   }
 
