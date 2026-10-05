@@ -24,6 +24,8 @@ class TaskTile extends ConsumerStatefulWidget {
     this.onExplicitDelete,
     this.autoRemoveWhenChecked = false,
     this.reorderIndex,
+    this.expanded,
+    this.onExpandedChanged,
   });
 
   final Task task;
@@ -51,6 +53,14 @@ class TaskTile extends ConsumerStatefulWidget {
   /// shown.
   final int? reorderIndex;
 
+  /// When set (together with [onExpandedChanged]), this tile's expanded
+  /// state is controlled by the caller instead of managed internally —
+  /// used by [ProjectDetailOverlay] so opening one task collapses any
+  /// other that's open (an accordion). Omit both to let the tile track
+  /// its own expanded state, as it always has.
+  final bool? expanded;
+  final ValueChanged<bool>? onExpandedChanged;
+
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
 }
@@ -62,6 +72,16 @@ class _TaskTileState extends ConsumerState<TaskTile> {
 
   bool _expanded = false;
   Timer? _autoRemoveTimer;
+
+  bool get _effectiveExpanded => widget.expanded ?? _expanded;
+
+  void _setExpanded(bool value) {
+    if (widget.onExpandedChanged != null) {
+      widget.onExpandedChanged!(value);
+    } else {
+      setState(() => _expanded = value);
+    }
+  }
 
   // Snapshotting the checked flag as a primitive rather than comparing
   // oldWidget.task.isChecked to widget.task.isChecked directly: Task is a
@@ -124,7 +144,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     // collapsed preview line would just be a duplicate. Due date shows as
     // its own tag (below) rather than duplicated into this text line.
     final subtitleParts = <String>[
-      if (!_expanded && (task.notes ?? '').trim().isNotEmpty)
+      if (!_effectiveExpanded && (task.notes ?? '').trim().isNotEmpty)
         task.notes!.trim(),
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
@@ -134,7 +154,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     return Column(
       children: [
         ListTile(
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () => _setExpanded(!_effectiveExpanded),
           leading: WobbleCheckbox(
             value: task.isChecked,
             reduceMotion: reduceMotion,
@@ -182,7 +202,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                   widget.onDelete();
                 },
               ),
-              Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              Icon(_effectiveExpanded ? Icons.expand_less : Icons.expand_more),
               if (widget.reorderIndex != null)
                 ReorderableDragStartListener(
                   index: widget.reorderIndex!,
@@ -201,7 +221,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
-          child: _expanded
+          child: _effectiveExpanded
               ? TaskDetailEditor(task: task, breakpoint: _sideBySideBreakpoint)
               : const SizedBox(width: double.infinity),
         ),

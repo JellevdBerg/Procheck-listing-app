@@ -47,10 +47,15 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
   Timer? _highlightTimer;
   bool _scrolledToHighlight = false;
 
+  /// At most one task is expanded at a time in this project's list —
+  /// opening one collapses whichever other task was open.
+  String? _expandedTaskId;
+
   @override
   void initState() {
     super.initState();
     _highlightedTaskId = widget.highlightTaskId;
+    _expandedTaskId = widget.highlightTaskId;
     _armHighlightTimer();
   }
 
@@ -61,6 +66,9 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
       setState(() {
         _highlightedTaskId = widget.highlightTaskId;
         _scrolledToHighlight = false;
+        if (widget.highlightTaskId != null) {
+          _expandedTaskId = widget.highlightTaskId;
+        }
       });
       _armHighlightTimer();
     }
@@ -186,6 +194,13 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
                                         task: task,
                                         onDelete: triggerRemoval,
                                         reorderIndex: index,
+                                        expanded: task.id == _expandedTaskId,
+                                        onExpandedChanged: (value) =>
+                                            setState(() {
+                                              _expandedTaskId = value
+                                                  ? task.id
+                                                  : null;
+                                            }),
                                       ),
                                     ),
                               );
