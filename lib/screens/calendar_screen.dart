@@ -201,7 +201,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
-    final accent = context.nocturneAccent;
     final tasks = ref.watch(tasksProvider);
     final projects = ref.watch(projectsProvider);
     final projectsById = {for (final p in projects) p.id: p};
@@ -231,6 +230,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               NocturneButton(
                 label: 'Today',
                 icon: Icons.today_outlined,
+                variant: NocturneButtonVariant.primary,
                 dense: true,
                 onPressed: _goToToday,
               ),
@@ -252,26 +252,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 message: _taskmasterOn
                     ? 'Click or drag a day to add a task there'
                     : 'Turn on to click or drag on the calendar to add tasks',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Taskmaster',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _taskmasterOn ? accent : tokens.neutral500,
-                      ),
-                    ),
-                    Switch(
-                      value: _taskmasterOn,
-                      activeThumbColor: accent,
-                      onChanged: (v) {
-                        _cancelDrag();
-                        setState(() => _taskmasterOn = v);
-                      },
-                    ),
-                  ],
+                child: NocturneButton(
+                  label: 'Taskmaster',
+                  icon: Icons.touch_app_outlined,
+                  dense: true,
+                  variant: _taskmasterOn
+                      ? NocturneButtonVariant.primary
+                      : NocturneButtonVariant.secondary,
+                  onPressed: () {
+                    _cancelDrag();
+                    setState(() => _taskmasterOn = !_taskmasterOn);
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -351,7 +342,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                         : widget.onDaySelected,
                                     onTaskTap: _handleTaskTap,
                                     showTopBorder: week != 0,
-                                    maxVisibleLanes: 4,
+                                    maxVisibleLanes: 3,
                                     taskmasterOn: _taskmasterOn,
                                     onTaskDelete: onTaskDelete,
                                     dragRange: dragRange,
@@ -428,6 +419,29 @@ class _WeekRow extends StatelessWidget {
   /// days within it get a highlight tint.
   final (DateTime, DateTime)? dragRange;
 
+  /// The row's own slice of an in-progress Taskmaster drag — null if the
+  /// drag (if any) doesn't touch this week at all. Mirrors how a real
+  /// multi-week task gets clipped to each row in [_computeLanes]: a true
+  /// cap only at the actual drag start/end, square where it continues past
+  /// this row's edge.
+  ({int colStart, int colEnd, bool roundLeft, bool roundRight})?
+  _dragSpanForRow() {
+    final range = dragRange;
+    if (range == null) return null;
+    final rowEnd = rowStart.add(const Duration(days: 6));
+    final start = range.$1;
+    final end = range.$2;
+    if (end.isBefore(rowStart) || start.isAfter(rowEnd)) return null;
+    final segStart = start.isBefore(rowStart) ? rowStart : start;
+    final segEnd = end.isAfter(rowEnd) ? rowEnd : end;
+    return (
+      colStart: segStart.difference(rowStart).inDays,
+      colEnd: segEnd.difference(rowStart).inDays,
+      roundLeft: _isSameDay(segStart, start),
+      roundRight: _isSameDay(segEnd, end),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
@@ -435,7 +449,6 @@ class _WeekRow extends StatelessWidget {
     final lanes = _computeLanes(tasks, rowStart, rowEnd);
 
     final cap = maxVisibleLanes;
-    final compact = cap != null;
     final overflow = cap != null && lanes.length > cap;
     // When overflowing, one of the cap slots is spent on the "+N more"
     // chip instead of a lane, so the row's total height never grows past
@@ -449,6 +462,7 @@ class _WeekRow extends StatelessWidget {
           .where((lane) => lane.any((p) => p.colStart <= day && p.colEnd >= day))
           .length,
     );
+    final dragSpan = _dragSpanForRow();
 
     return Container(
       decoration: BoxDecoration(
@@ -456,94 +470,115 @@ class _WeekRow extends StatelessWidget {
             ? Border(top: BorderSide(color: tokens.divider))
             : null,
       ),
-      child: Stack(
-        children: [
-          // A background+divider layer sized to the full row, independent
-          // of the day-number/lane content layered on top — so weekend and
-          // next-month shading, and the lines between days, run the row's
-          // whole height rather than just behind the day numbers.
-          Positioned.fill(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < 7; i++)
-                  Expanded(
-                    child: _DayCellBackground(
-                      inCurrentMonth: !dimOutOfRangeDays ||
-                          rowStart.add(Duration(days: i)).month ==
-                              month.month,
-                      isWeekend: i == 5 || i == 6,
-                      showDivider: i < 6,
-                      isDragSelected: dragRange != null &&
-                          !rowStart
-                              .add(Duration(days: i))
-                              .isBefore(dragRange!.$1) &&
-                          !rowStart
-                              .add(Duration(days: i))
-                              .isAfter(dragRange!.$2),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final colWidth = constraints.maxWidth / 7;
+          return Stack(
+            children: [
+              // A background+divider layer sized to the full row, independent
+              // of the day-number/lane content layered on top — so weekend and
+              // next-month shading, and the lines between days, run the row's
+              // whole height rather than just behind the day numbers.
+              Positioned.fill(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (var i = 0; i < 7; i++)
                       Expanded(
-                        child: _DayNumber(
-                          date: rowStart.add(Duration(days: i)),
-                          active: !dimOutOfRangeDays ||
+                        child: _DayCellBackground(
+                          inCurrentMonth: !dimOutOfRangeDays ||
                               rowStart.add(Duration(days: i)).month ==
                                   month.month,
-                          isToday: _isSameDay(
-                            rowStart.add(Duration(days: i)),
-                            today,
-                          ),
-                          onTap: () =>
-                              onDayTap(rowStart.add(Duration(days: i))),
+                          isWeekend: i == 5 || i == 6,
+                          showDivider: i < 6,
+                          isDragSelected: dragRange != null &&
+                              !rowStart
+                                  .add(Duration(days: i))
+                                  .isBefore(dragRange!.$1) &&
+                              !rowStart
+                                  .add(Duration(days: i))
+                                  .isAfter(dragRange!.$2),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
                       children: [
-                        for (final lane in visibleLanes) ...[
-                          _LaneRow(
-                            lane: lane,
-                            today: today,
-                            projectsById: projectsById,
-                            onTaskTap: onTaskTap,
-                            taskmasterOn: taskmasterOn,
-                            onTaskDelete: onTaskDelete,
-                            compact: compact,
-                          ),
-                          SizedBox(height: compact ? 2 : 3),
-                        ],
-                        if (overflow)
-                          _OverflowRow(
-                            rowStart: rowStart,
-                            counts: overflowCounts,
-                            tasks: tasks,
-                            projectsById: projectsById,
-                            onTaskTap: onTaskTap,
-                            compact: compact,
+                        for (var i = 0; i < 7; i++)
+                          Expanded(
+                            child: _DayNumber(
+                              date: rowStart.add(Duration(days: i)),
+                              active: !dimOutOfRangeDays ||
+                                  rowStart.add(Duration(days: i)).month ==
+                                      month.month,
+                              isToday: _isSameDay(
+                                rowStart.add(Duration(days: i)),
+                                today,
+                              ),
+                              onTap: () =>
+                                  onDayTap(rowStart.add(Duration(days: i))),
+                            ),
                           ),
                       ],
                     ),
+                    const SizedBox(height: 3),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            for (final lane in visibleLanes) ...[
+                              _LaneRow(
+                                lane: lane,
+                                today: today,
+                                projectsById: projectsById,
+                                onTaskTap: onTaskTap,
+                                taskmasterOn: taskmasterOn,
+                                onTaskDelete: onTaskDelete,
+                              ),
+                              const SizedBox(height: 3),
+                            ],
+                            if (overflow)
+                              _OverflowRow(
+                                rowStart: rowStart,
+                                counts: overflowCounts,
+                                tasks: tasks,
+                                projectsById: projectsById,
+                                onTaskTap: onTaskTap,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (dragSpan != null)
+                AnimatedPositioned(
+                  key: const ValueKey('drag-ghost'),
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOut,
+                  left: dragSpan.colStart * colWidth + 2,
+                  width:
+                      (dragSpan.colEnd - dragSpan.colStart + 1) * colWidth -
+                      4,
+                  top: 35,
+                  height: 27,
+                  child: IgnorePointer(
+                    child: _DragGhostBar(
+                      roundLeft: dragSpan.roundLeft,
+                      roundRight: dragSpan.roundRight,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -575,6 +610,13 @@ class _DayCellBackground extends StatelessWidget {
         decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.18)),
       );
     } else if (isWeekend) {
+      // neutral700 at 0.4 reads clearly against dark mode's near-black
+      // surface, but in light mode it's a pale lavender on a near-white
+      // one — nearly invisible — so light mode gets a darker, more opaque
+      // line instead. neutral500 is the one step in the ramp defined
+      // identically in both palettes, which keeps this a deliberate
+      // one-off rather than a tweak to a token other widgets also read.
+      final isLight = Theme.of(context).brightness == Brightness.light;
       // CustomPaint draws straight onto the ambient canvas with no clip of
       // its own, and the stripe lines intentionally run past this cell's
       // right edge — without ClipRect that tail paints straight over
@@ -582,7 +624,9 @@ class _DayCellBackground extends StatelessWidget {
       fill = ClipRect(
         child: CustomPaint(
           painter: _DiagonalStripesPainter(
-            color: tokens.neutral700.withValues(alpha: 0.4),
+            color: isLight
+                ? tokens.neutral500.withValues(alpha: 0.45)
+                : tokens.neutral700.withValues(alpha: 0.4),
           ),
         ),
       );
@@ -702,7 +746,6 @@ class _LaneRow extends StatelessWidget {
     required this.onTaskTap,
     required this.taskmasterOn,
     required this.onTaskDelete,
-    this.compact = false,
   });
 
   final List<_BarPlacement> lane;
@@ -711,7 +754,6 @@ class _LaneRow extends StatelessWidget {
   final void Function(Task task, BuildContext rowContext) onTaskTap;
   final bool taskmasterOn;
   final void Function(Task task) onTaskDelete;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -724,21 +766,31 @@ class _LaneRow extends StatelessWidget {
         );
       }
       final span = placement.colEnd - placement.colStart + 1;
+      // Saturday/Sunday are always this row's last two columns (5, 6), so a
+      // placement can cross at most once: a weekday run (<=4) followed by
+      // its own weekend run — never the other way round within one row.
+      final crossesWeekend = placement.colStart <= 4 && placement.colEnd >= 5;
       children.add(
         Expanded(
           flex: span,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-            child: _TaskBar(
-              placement: placement,
-              today: today,
-              project: projectsById[placement.task.projectId],
-              onTap: (ctx) => onTaskTap(placement.task, ctx),
-              taskmasterOn: taskmasterOn,
-              onDelete: () => onTaskDelete(placement.task),
-              compact: compact,
-            ),
-          ),
+          child: crossesWeekend
+              ? _buildCrossingBar(placement)
+              : Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 1,
+                  ),
+                  child: _TaskBar(
+                    placement: placement,
+                    today: today,
+                    project: projectsById[placement.task.projectId],
+                    onTap: (ctx) => onTaskTap(placement.task, ctx),
+                    taskmasterOn: taskmasterOn,
+                    onDelete: () => onTaskDelete(placement.task),
+                    roundLeft: placement.isRangeStart,
+                    roundRight: placement.isRangeEnd,
+                  ),
+                ),
         ),
       );
       col = placement.colEnd + 1;
@@ -747,6 +799,53 @@ class _LaneRow extends StatelessWidget {
       children.add(Expanded(flex: 7 - col, child: const SizedBox()));
     }
     return Row(children: children);
+  }
+
+  /// Splits a placement that runs from a weekday into its own weekend into
+  /// two touching segments — a normal pill for the weekday run and a slim
+  /// connector for the weekend run — so the bar visually continues through
+  /// the weekend rather than reading as a separate, disconnected task.
+  Widget _buildCrossingBar(_BarPlacement placement) {
+    final weekdaySpan = 4 - placement.colStart + 1;
+    final weekendSpan = placement.colEnd - 5 + 1;
+    final project = projectsById[placement.task.projectId];
+    return Row(
+      children: [
+        Expanded(
+          flex: weekdaySpan,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 2, top: 1, bottom: 1),
+            child: _TaskBar(
+              placement: placement,
+              today: today,
+              project: project,
+              onTap: (ctx) => onTaskTap(placement.task, ctx),
+              taskmasterOn: taskmasterOn,
+              onDelete: () => onTaskDelete(placement.task),
+              roundLeft: placement.isRangeStart,
+              roundRight: false,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: weekendSpan,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 2, top: 1, bottom: 1),
+            child: _TaskBar(
+              placement: placement,
+              today: today,
+              project: project,
+              onTap: (ctx) => onTaskTap(placement.task, ctx),
+              taskmasterOn: taskmasterOn,
+              onDelete: () => onTaskDelete(placement.task),
+              roundLeft: false,
+              roundRight: placement.isRangeEnd,
+              weekend: true,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -760,7 +859,6 @@ class _OverflowRow extends StatelessWidget {
     required this.tasks,
     required this.projectsById,
     required this.onTaskTap,
-    this.compact = false,
   });
 
   final DateTime rowStart;
@@ -768,13 +866,12 @@ class _OverflowRow extends StatelessWidget {
   final List<Task> tasks;
   final Map<String, Project> projectsById;
   final void Function(Task task, BuildContext rowContext) onTaskTap;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     return SizedBox(
-      height: compact ? 15 : 20,
+      height: 20,
       child: Row(
         children: [
           for (var i = 0; i < 7; i++)
@@ -802,7 +899,7 @@ class _OverflowRow extends StatelessWidget {
                             child: Text(
                               '+${counts[i]} more',
                               style: TextStyle(
-                                fontSize: compact ? 9.5 : 11,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: tokens.neutral500,
                               ),
@@ -898,7 +995,8 @@ void _showDayTasksDialog(
                         },
                         taskmasterOn: false,
                         onDelete: () {},
-                        compact: false,
+                        roundLeft: true,
+                        roundRight: true,
                       );
                     },
                   ),
@@ -920,7 +1018,9 @@ class _TaskBar extends StatefulWidget {
     required this.onTap,
     required this.taskmasterOn,
     required this.onDelete,
-    this.compact = false,
+    required this.roundLeft,
+    required this.roundRight,
+    this.weekend = false,
   });
 
   final _BarPlacement placement;
@@ -930,10 +1030,17 @@ class _TaskBar extends StatefulWidget {
   final bool taskmasterOn;
   final VoidCallback onDelete;
 
-  /// Shrinks the bar for the month grid's stacked lanes, so four of them
-  /// plus the overflow chip fit the row's fixed height — the full size is
-  /// kept everywhere there's room to spare (Week view, the day dialog).
-  final bool compact;
+  /// Whether this segment's left/right edge gets the pill's rounded cap —
+  /// false at a seam where the bar continues into an adjoining segment
+  /// (its own weekend run, in the same row) rather than truly starting or
+  /// ending there.
+  final bool roundLeft;
+  final bool roundRight;
+
+  /// Renders as a slim, text-free connector instead of the normal pill —
+  /// the Saturday/Sunday portion of a bar that continues through the
+  /// weekend from a weekday run earlier in the same row.
+  final bool weekend;
 
   @override
   State<_TaskBar> createState() => _TaskBarState();
@@ -977,17 +1084,36 @@ class _TaskBarState extends State<_TaskBar> {
     final originLabel = project != null ? project.name : 'Unfiled';
 
     final radius = BorderRadius.horizontal(
-      left: placement.isRangeStart ? const Radius.circular(13) : Radius.zero,
-      right: placement.isRangeEnd ? const Radius.circular(13) : Radius.zero,
+      left: widget.roundLeft ? const Radius.circular(13) : Radius.zero,
+      right: widget.roundRight ? const Radius.circular(13) : Radius.zero,
     );
 
-    final compact = widget.compact;
+    if (widget.weekend) {
+      // A minimal connector rather than the full pill: just enough to read
+      // as "this task keeps going" through the weekend, without trying to
+      // cram the full label into two narrow columns. No Center/Align here
+      // — the surrounding Padding already hands this tight width (the
+      // column's full width), and the lane Row centers it vertically
+      // against the full-height weekday segment beside it.
+      return SizedBox(
+        height: 8,
+        child: Material(
+          color: bg,
+          shape: RoundedRectangleBorder(
+            borderRadius: radius,
+            side: BorderSide(color: border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(onTap: () => widget.onTap(context)),
+        ),
+      );
+    }
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: SizedBox(
-      height: compact ? 18 : 27,
+      height: 27,
       child: Material(
         color: bg,
         shape: RoundedRectangleBorder(
@@ -998,27 +1124,27 @@ class _TaskBarState extends State<_TaskBar> {
         child: InkWell(
           onTap: () => widget.onTap(context),
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 9),
+            padding: const EdgeInsets.symmetric(horizontal: 9),
             child: Row(
               children: [
                 if (isOverdue) ...[
-                  Text(
+                  const Text(
                     '!',
                     style: TextStyle(
-                      fontSize: compact ? 12 : 15,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFFFF3B30),
+                      color: Color(0xFFFF3B30),
                       height: 1,
                     ),
                   ),
-                  SizedBox(width: compact ? 3 : 4),
+                  const SizedBox(width: 4),
                 ],
                 if (priorityColor != null) ...[
-                  Icon(Icons.flag, size: compact ? 10 : 12, color: priorityColor),
-                  SizedBox(width: compact ? 3 : 4),
+                  Icon(Icons.flag, size: 12, color: priorityColor),
+                  const SizedBox(width: 4),
                 ],
-                Icon(Icons.folder, size: compact ? 11 : 13, color: originColor),
-                SizedBox(width: compact ? 3 : 4),
+                Icon(Icons.folder, size: 13, color: originColor),
+                const SizedBox(width: 4),
                 Expanded(
                   flex: 2,
                   child: Text(
@@ -1026,13 +1152,13 @@ class _TaskBarState extends State<_TaskBar> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: compact ? 10 : 12,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: originColor,
                     ),
                   ),
                 ),
-                SizedBox(width: compact ? 5 : 7),
+                const SizedBox(width: 7),
                 Expanded(
                   flex: 3,
                   child: Text(
@@ -1040,7 +1166,7 @@ class _TaskBarState extends State<_TaskBar> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: compact ? 11 : 13,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: fg,
                       decoration:
@@ -1049,15 +1175,15 @@ class _TaskBarState extends State<_TaskBar> {
                   ),
                 ),
                 if (task.hasSubtasks) ...[
-                  SizedBox(width: compact ? 3 : 4),
+                  const SizedBox(width: 4),
                   Icon(
                     Icons.checklist,
-                    size: compact ? 11 : 13,
+                    size: 13,
                     color: fg.withValues(alpha: 0.85),
                   ),
                 ],
                 if (widget.taskmasterOn && _hovering) ...[
-                  SizedBox(width: compact ? 3 : 4),
+                  const SizedBox(width: 4),
                   _DeleteDot(onTap: widget.onDelete),
                 ],
               ],
@@ -1089,6 +1215,65 @@ class _DeleteDot extends StatelessWidget {
         child: const Padding(
           padding: EdgeInsets.all(2),
           child: Icon(Icons.close, size: 12, color: Color(0xFFFF3B30)),
+        ),
+      ),
+    );
+  }
+}
+
+/// A live preview of the task being drawn by a Taskmaster drag — its
+/// position/size track the pointer via [_WeekRow]'s own rebuilds (animated
+/// by the `AnimatedPositioned` that places it), while this widget adds a
+/// quick fade/scale-in of its own so the very first appearance also reads
+/// as "growing in", not just a pop.
+class _DragGhostBar extends StatelessWidget {
+  const _DragGhostBar({required this.roundLeft, required this.roundRight});
+
+  final bool roundLeft;
+  final bool roundRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final accent = context.nocturneAccent;
+    final radius = BorderRadius.horizontal(
+      left: roundLeft ? const Radius.circular(13) : Radius.zero,
+      right: roundRight ? const Radius.circular(13) : Radius.zero,
+    );
+    final bg = Color.alphaBlend(accent.withValues(alpha: 0.18), tokens.surface);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.85, end: 1),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      builder: (context, scale, child) =>
+          Opacity(opacity: scale, child: child),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: radius,
+          border: Border.all(color: accent.withValues(alpha: 0.8), width: 1.4),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          child: Row(
+            children: [
+              Icon(Icons.add, size: 13, color: accent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'New task',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
