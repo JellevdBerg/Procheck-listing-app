@@ -15,6 +15,10 @@ class ProgressHistoryService {
 
   static final ProgressHistoryService instance = ProgressHistoryService._();
 
+  /// [previousDayPercent] only ever needs the most recent prior day, so
+  /// anything older than this is pruned on write rather than kept forever.
+  static const _retentionDays = 30;
+
   Box<double> get _box => Hive.box<double>(progressHistoryBoxName);
 
   String _keyFor(String workspaceId, DateTime date) =>
@@ -28,31 +32,40 @@ class ProgressHistoryService {
   /// Records today's [percent] for [workspaceId] the first time this is
   /// called on a given day — safe to call from a build method on every
   /// rebuild without spamming writes, since every call after the first
-  /// today is a no-op.
+  /// today is a no-op. Also prunes this workspace's entries older than
+  /// [_retentionDays], so the box doesn't grow forever.
   void recordIfNeeded(String workspaceId, double percent) {
-    final key = _keyFor(workspaceId, DateTime.now());
+    final today = DateTime.now();
+    final key = _keyFor(workspaceId, today);
     if (_box.containsKey(key)) return;
     unawaited(_box.put(key, percent));
+    unawaited(_pruneOldEntries(workspaceId, today));
+  }
+
+  Future<void> _pruneOldEntries(String workspaceId, DateTime today) async {
+    final cutoff = today.subtract(const Duration(days: _retentionDays));
+    final prefix = '$workspaceId|';
+    final staleKeys = _box.keys.where((key) {
+      if (key is! String || !key.startsWith(prefix)) return false;
+      final date = DateTime.tryParse(key.substring(prefix.length));
+      return date != null && date.isBefore(cutoff);
+    });
+    if (staleKeys.isEmpty) return;
+    await _box.deleteAll(staleKeys);
   }
 
   /// The most recently recorded percentage for [workspaceId] from a day
-  /// before today, or null if none exists yet.
+  /// before today, or null if none exists yet. Walks backward from
+  /// yesterday looking up each day's key directly, instead of scanning
+  /// every key in the box.
   double? previousDayPercent(String workspaceId) {
-    final todayKey = _keyFor(workspaceId, DateTime.now());
-    final prefix = '$workspaceId|';
-    DateTime? bestDate;
-    double? bestValue;
-    for (final key in _box.keys) {
-      if (key is! String || key == todayKey || !key.startsWith(prefix)) {
-        continue;
-      }
-      final date = DateTime.tryParse(key.substring(prefix.length));
-      if (date == null) continue;
-      if (bestDate == null || date.isAfter(bestDate)) {
-        bestDate = date;
-        bestValue = _box.get(key);
-      }
+    final today = DateTime.now();
+    for (var daysAgo = 1; daysAgo <= _retentionDays; daysAgo++) {
+      final value = _box.get(
+        _keyFor(workspaceId, today.subtract(Duration(days: daysAgo))),
+      );
+      if (value != null) return value;
     }
-    return bestValue;
+    return null;
   }
 }

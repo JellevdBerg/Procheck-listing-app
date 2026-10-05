@@ -51,13 +51,27 @@ Future<void> setUpHive({String? testDirectoryPath}) async {
   _registerAdapter(ProjectCommentAdapter());
 
   await Future.wait([
-    Hive.openBox<Project>(projectBoxName),
-    Hive.openBox<Task>(taskBoxName),
-    Hive.openBox<TaskTemplate>(taskTemplateBoxName),
-    Hive.openBox(settingsBoxName),
-    Hive.openBox<double>(progressHistoryBoxName),
+    Hive.openBox<Project>(projectBoxName,
+        compactionStrategy: _compactionStrategy),
+    Hive.openBox<Task>(taskBoxName, compactionStrategy: _compactionStrategy),
+    Hive.openBox<TaskTemplate>(taskTemplateBoxName,
+        compactionStrategy: _compactionStrategy),
+    Hive.openBox(settingsBoxName, compactionStrategy: _compactionStrategy),
+    Hive.openBox<double>(progressHistoryBoxName,
+        compactionStrategy: _compactionStrategy),
   ]);
 }
+
+/// Every delete and every overwrite of an existing key leaves a stale frame
+/// behind in the box's file on disk until it's compacted. Hive's own default
+/// strategy only compacts once deleted frames are both more than 60 AND over
+/// 15% of the box, so a box that mostly grows (task/project edits far
+/// outnumber deletions) can accumulate thousands of dead frames — and a
+/// correspondingly bloated file — without ever crossing that 15% ratio.
+/// This strategy drops the ratio requirement and compacts on the absolute
+/// count alone, so dead frames actually get reclaimed as the app is used.
+bool _compactionStrategy(int entries, int deletedEntries) =>
+    deletedEntries > 60;
 
 /// Older versions stored data loose in the user's Documents folder — Windows'
 /// "application documents directory" has no app-specific subfolder of its
