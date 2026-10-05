@@ -41,7 +41,16 @@ const _weekdayLabels = [
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
-DateTime _weekStartOf(DateTime d) => d.subtract(Duration(days: d.weekday - 1));
+
+/// Steps a calendar date by [days] (negative to go backward) — rebuilding
+/// the date from its year/month/day fields rather than adding a `Duration`,
+/// which is calendar-correct across a daylight-saving transition. A plain
+/// `date.add(Duration(days: n))` only adds exactly 24*n hours, so stepping
+/// across the October DST fall-back (a 25-hour day) lands an hour short of
+/// midnight on the intended day and reads as the day before it instead.
+DateTime _addDays(DateTime d, int days) => DateTime(d.year, d.month, d.day + days);
+
+DateTime _weekStartOf(DateTime d) => _addDays(d, -(d.weekday - 1));
 
 enum _CalendarView { week, month }
 
@@ -89,7 +98,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     setState(() {
       _anchor = _view == _CalendarView.month
           ? DateTime(_anchor.year, _anchor.month + delta, 1)
-          : _anchor.add(Duration(days: 7 * delta));
+          : _addDays(_anchor, 7 * delta);
     });
   }
 
@@ -190,7 +199,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       return '${_monthNames[_anchor.month - 1]} ${_anchor.year}';
     }
     final start = _weekStartOf(_anchor);
-    final end = start.add(const Duration(days: 6));
+    final end = _addDays(start, 6);
     final startLabel =
         '${_monthNames[start.month - 1].substring(0, 3)} ${start.day}';
     final endLabel = start.month == end.month
@@ -208,9 +217,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final today = DateTime.now();
 
     final firstOfMonth = DateTime(_anchor.year, _anchor.month, 1);
-    final gridStart = firstOfMonth.subtract(
-      Duration(days: firstOfMonth.weekday - 1),
-    );
+    final gridStart = _addDays(firstOfMonth, -(firstOfMonth.weekday - 1));
 
     final dragRange = (_dragAnchor != null && _dragCursor != null)
         ? (
@@ -305,7 +312,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   final row = (local.dy / gridSize.height * rowsCount)
                       .floor()
                       .clamp(0, rowsCount - 1);
-                  return weekStart.add(Duration(days: row * 7 + col));
+                  return _addDays(weekStart, row * 7 + col);
                 }
 
                 return GestureDetector(
@@ -330,9 +337,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               for (var week = 0; week < 6; week++)
                                 Expanded(
                                   child: _WeekRow(
-                                    rowStart: gridStart.add(
-                                      Duration(days: week * 7),
-                                    ),
+                                    rowStart: _addDays(gridStart, week * 7),
                                     month: _anchor,
                                     today: today,
                                     tasks: tasks,
@@ -429,7 +434,7 @@ class _WeekRow extends StatelessWidget {
   _dragSpanForRow() {
     final range = dragRange;
     if (range == null) return null;
-    final rowEnd = rowStart.add(const Duration(days: 6));
+    final rowEnd = _addDays(rowStart, 6);
     final start = range.$1;
     final end = range.$2;
     if (end.isBefore(rowStart) || start.isAfter(rowEnd)) return null;
@@ -443,10 +448,39 @@ class _WeekRow extends StatelessWidget {
     );
   }
 
+  /// The preview widget for a drag span clipped to this row — a plain
+  /// ghost pill normally, or the tapered [_CalendarCrossingPill] whenever
+  /// this segment runs into its own weekend, or itself picks up from a
+  /// weekend the previous row's segment ended in (`!roundLeft` always means
+  /// that, since every row is Monday-through-Sunday).
+  Widget _buildGhost(
+    ({int colStart, int colEnd, bool roundLeft, bool roundRight}) dragSpan,
+    double colWidth,
+  ) {
+    final crossesWeekend = dragSpan.colStart <= 4 && dragSpan.colEnd >= 5;
+    final leadingTaper = !dragSpan.roundLeft;
+    if (!crossesWeekend && !leadingTaper) {
+      return _DragGhostBar(
+        roundLeft: dragSpan.roundLeft,
+        roundRight: dragSpan.roundRight,
+      );
+    }
+    return _CalendarCrossingPill(
+      colWidth: colWidth,
+      weekdayCols: crossesWeekend
+          ? 4 - dragSpan.colStart + 1
+          : dragSpan.colEnd - dragSpan.colStart + 1,
+      weekendCols: crossesWeekend ? dragSpan.colEnd - 5 + 1 : 0,
+      leadingTaper: leadingTaper,
+      roundLeft: dragSpan.roundLeft,
+      roundRight: dragSpan.roundRight,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
-    final rowEnd = rowStart.add(const Duration(days: 6));
+    final rowEnd = _addDays(rowStart, 6);
     final lanes = _computeLanes(tasks, rowStart, rowEnd);
 
     final cap = maxVisibleLanes;
@@ -506,17 +540,12 @@ class _WeekRow extends StatelessWidget {
                       Expanded(
                         child: _DayCellBackground(
                           inCurrentMonth: !dimOutOfRangeDays ||
-                              rowStart.add(Duration(days: i)).month ==
-                                  month.month,
+                              _addDays(rowStart, i).month == month.month,
                           isWeekend: i == 5 || i == 6,
                           showDivider: i < 6,
                           isDragSelected: dragRange != null &&
-                              !rowStart
-                                  .add(Duration(days: i))
-                                  .isBefore(dragRange!.$1) &&
-                              !rowStart
-                                  .add(Duration(days: i))
-                                  .isAfter(dragRange!.$2),
+                              !_addDays(rowStart, i).isBefore(dragRange!.$1) &&
+                              !_addDays(rowStart, i).isAfter(dragRange!.$2),
                         ),
                       ),
                   ],
@@ -532,16 +561,11 @@ class _WeekRow extends StatelessWidget {
                         for (var i = 0; i < 7; i++)
                           Expanded(
                             child: _DayNumber(
-                              date: rowStart.add(Duration(days: i)),
+                              date: _addDays(rowStart, i),
                               active: !dimOutOfRangeDays ||
-                                  rowStart.add(Duration(days: i)).month ==
-                                      month.month,
-                              isToday: _isSameDay(
-                                rowStart.add(Duration(days: i)),
-                                today,
-                              ),
-                              onTap: () =>
-                                  onDayTap(rowStart.add(Duration(days: i))),
+                                  _addDays(rowStart, i).month == month.month,
+                              isToday: _isSameDay(_addDays(rowStart, i), today),
+                              onTap: () => onDayTap(_addDays(rowStart, i)),
                             ),
                           ),
                       ],
@@ -559,6 +583,7 @@ class _WeekRow extends StatelessWidget {
                                 onTaskTap: onTaskTap,
                                 taskmasterOn: taskmasterOn,
                                 onTaskDelete: onTaskDelete,
+                                colWidth: colWidth,
                               ),
                               const SizedBox(height: 3),
                             ],
@@ -593,17 +618,7 @@ class _WeekRow extends StatelessWidget {
                   top: 35 + (ghostLane ?? 0) * 30,
                   height: 27,
                   child: IgnorePointer(
-                    child: dragSpan.colStart <= 4 && dragSpan.colEnd >= 5
-                        ? _CalendarCrossingPill(
-                            weekdayCols: 4 - dragSpan.colStart + 1,
-                            weekendCols: dragSpan.colEnd - 5 + 1,
-                            roundLeft: dragSpan.roundLeft,
-                            roundRight: dragSpan.roundRight,
-                          )
-                        : _DragGhostBar(
-                            roundLeft: dragSpan.roundLeft,
-                            roundRight: dragSpan.roundRight,
-                          ),
+                    child: _buildGhost(dragSpan, colWidth),
                   ),
                 ),
             ],
@@ -776,6 +791,7 @@ class _LaneRow extends StatelessWidget {
     required this.onTaskTap,
     required this.taskmasterOn,
     required this.onTaskDelete,
+    required this.colWidth,
   });
 
   final List<_BarPlacement> lane;
@@ -784,6 +800,12 @@ class _LaneRow extends StatelessWidget {
   final void Function(Task task, BuildContext rowContext) onTaskTap;
   final bool taskmasterOn;
   final void Function(Task task) onTaskDelete;
+
+  /// The pixel width of one grid column — passed down (rather than relying
+  /// on this row's own flex layout) so a crossing pill's weekday/weekend
+  /// taper lands at an exact, grid-anchored pixel offset instead of a
+  /// fraction of whatever width flex happens to hand it.
+  final double colWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -800,11 +822,16 @@ class _LaneRow extends StatelessWidget {
       // placement can cross at most once: a weekday run (<=4) followed by
       // its own weekend run — never the other way round within one row.
       final crossesWeekend = placement.colStart <= 4 && placement.colEnd >= 5;
+      // Every row is Monday-through-Sunday, so a placement that doesn't
+      // start in this row (it started in an earlier week) necessarily
+      // picks up right after last row's Sunday — always a weekend hand-off,
+      // even when this row's own segment never reaches its own weekend.
+      final leadingTaper = !placement.isRangeStart;
       children.add(
         Expanded(
           flex: span,
-          child: crossesWeekend
-              ? _buildCrossingBar(placement)
+          child: crossesWeekend || leadingTaper
+              ? _buildCrossingBar(placement, crossesWeekend, leadingTaper)
               : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 2,
@@ -831,18 +858,27 @@ class _LaneRow extends StatelessWidget {
     return Row(children: children);
   }
 
-  /// A placement that runs from a weekday into its own weekend renders as
-  /// one continuous [_CalendarCrossingPill] — its shape tapers from the
-  /// normal pill height down to a slim weekend connector through its own
-  /// contour, rather than being split into two touching widgets.
-  Widget _buildCrossingBar(_BarPlacement placement) {
-    final weekdayCols = 4 - placement.colStart + 1;
-    final weekendCols = placement.colEnd - 5 + 1;
+  /// A placement that runs from a weekday into its own weekend, or that
+  /// picks up from a weekend the previous row left off in, renders as one
+  /// continuous [_CalendarCrossingPill] — its shape tapers from the normal
+  /// pill height down to (or up from) a slim weekend connector through its
+  /// own contour, rather than being split into separate touching widgets.
+  Widget _buildCrossingBar(
+    _BarPlacement placement,
+    bool crossesWeekend,
+    bool leadingTaper,
+  ) {
+    final weekdayCols = crossesWeekend
+        ? 4 - placement.colStart + 1
+        : placement.colEnd - placement.colStart + 1;
+    final weekendCols = crossesWeekend ? placement.colEnd - 5 + 1 : 0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
       child: _CalendarCrossingPill(
+        colWidth: colWidth,
         weekdayCols: weekdayCols,
         weekendCols: weekendCols,
+        leadingTaper: leadingTaper,
         roundLeft: placement.isRangeStart,
         roundRight: placement.isRangeEnd,
         task: placement.task,
@@ -892,7 +928,7 @@ class _OverflowRow extends StatelessWidget {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(6),
                           onTap: () {
-                            final day = rowStart.add(Duration(days: i));
+                            final day = _addDays(rowStart, i);
                             _showDayTasksDialog(
                               context,
                               day,
@@ -1248,15 +1284,25 @@ class _DeleteDot extends StatelessWidget {
   }
 }
 
-/// The outline of a task bar that runs from a weekday into its own weekend:
-/// a full-height capsule on the weekday side that necks down, through a
-/// smooth S-curve in its own contour, into a slim capsule on the weekend
-/// side — one continuous [Path], so there's no seam where the two portions
-/// meet. [weekdayFraction] is how much of the shape's total width the
-/// weekday portion occupies (its column count over the combined span).
+/// The outline of a task bar that runs from a weekday into its own weekend,
+/// or that picks up a weekend hand-off from the row above: a full-height
+/// capsule that necks down (or up), through a smooth S-curve in its own
+/// contour, into a slim capsule — one continuous [Path], so there's no seam
+/// anywhere the shape changes height.
+///
+/// [weekdayCols]/[weekendCols]/[colWidth] place the weekday→weekend taper
+/// at a fixed pixel offset from the box's own left edge — `weekdayCols *
+/// colWidth`, the same 2px-inset convention every crossing pill is drawn
+/// with — rather than a fraction of the box's own (possibly still
+/// mid-animation, while a drag is growing it) width. That keeps the taper
+/// pinned to its grid column boundary at every frame instead of drifting
+/// while the box's far edge eases toward its new size.
 class _CrossingPillBorder extends OutlinedBorder {
   const _CrossingPillBorder({
-    required this.weekdayFraction,
+    required this.colWidth,
+    required this.weekdayCols,
+    required this.weekendCols,
+    required this.leadingTaper,
     required this.weekdayHeight,
     required this.weekendHeight,
     required this.roundLeft,
@@ -1264,7 +1310,15 @@ class _CrossingPillBorder extends OutlinedBorder {
     super.side = BorderSide.none,
   });
 
-  final double weekdayFraction;
+  final double colWidth;
+  final int weekdayCols;
+  final int weekendCols;
+
+  /// True when this box's own left edge picks up mid-taper from a weekend
+  /// the previous row's segment ended in — the mirror image of the normal
+  /// weekday→weekend taper, just starting at thin height right at x=0
+  /// instead of narrowing into it.
+  final bool leadingTaper;
   final double weekdayHeight;
   final double weekendHeight;
   final bool roundLeft;
@@ -1272,7 +1326,10 @@ class _CrossingPillBorder extends OutlinedBorder {
 
   @override
   _CrossingPillBorder copyWith({BorderSide? side}) => _CrossingPillBorder(
-    weekdayFraction: weekdayFraction,
+    colWidth: colWidth,
+    weekdayCols: weekdayCols,
+    weekendCols: weekendCols,
+    leadingTaper: leadingTaper,
     weekdayHeight: weekdayHeight,
     weekendHeight: weekendHeight,
     roundLeft: roundLeft,
@@ -1280,59 +1337,119 @@ class _CrossingPillBorder extends OutlinedBorder {
     side: side ?? this.side,
   );
 
+  double _capRadius(bool thin) =>
+      math.min(13.0, (thin ? weekendHeight : weekdayHeight) / 2);
+
   Path _buildPath(Rect rect) {
-    final weekdayTop = rect.top + (rect.height - weekdayHeight) / 2;
-    final weekdayBottom = weekdayTop + weekdayHeight;
-    final weekendTop = rect.top + (rect.height - weekendHeight) / 2;
-    final weekendBottom = weekendTop + weekendHeight;
-    final weekdayW = rect.width * weekdayFraction;
-    final weekendW = rect.width - weekdayW;
-    final taper = [14.0, weekdayW * 0.5, weekendW * 0.5].reduce(math.min);
-    final leftCap = math.min(13.0, weekdayHeight / 2);
-    final rightCap = math.min(13.0, weekendHeight / 2);
-    final x0 = rect.left;
-    final xNeck = rect.left + weekdayW;
-    final x1 = rect.right;
+    final fullTop = rect.top + (rect.height - weekdayHeight) / 2;
+    final fullBottom = fullTop + weekdayHeight;
+    final thinTop = rect.top + (rect.height - weekendHeight) / 2;
+    final thinBottom = thinTop + weekendHeight;
+
+    final hasTrailingTaper = weekendCols > 0;
+    final neckMid = hasTrailingTaper
+        ? (rect.left + weekdayCols * colWidth - 2).clamp(rect.left, rect.right)
+        : rect.right;
+
+    var taper = 14.0;
+    if (leadingTaper) taper = math.min(taper, neckMid - rect.left);
+    if (hasTrailingTaper) taper = math.min(taper, rect.right - neckMid);
+    if (leadingTaper && hasTrailingTaper) {
+      taper = math.min(taper, (neckMid - rect.left) / 2);
+    }
+    taper = math.max(taper, 0);
+
+    final leadEnd = rect.left + (leadingTaper ? taper : 0);
+    final neckStart = hasTrailingTaper ? neckMid - taper : rect.right;
+    final neckEnd = neckMid + taper;
+    final leftCap = _capRadius(false);
+    final rightCap = _capRadius(hasTrailingTaper);
 
     final path = Path();
+
+    // Top edge, left to right.
     if (roundLeft) {
-      path.moveTo(x0, weekdayTop + leftCap);
-      path.arcToPoint(Offset(x0 + leftCap, weekdayTop), radius: Radius.circular(leftCap));
+      path.moveTo(rect.left, fullTop + leftCap);
+      path.arcToPoint(
+        Offset(rect.left + leftCap, fullTop),
+        radius: Radius.circular(leftCap),
+      );
+    } else if (leadingTaper) {
+      path.moveTo(rect.left, thinTop);
+      path.cubicTo(
+        rect.left + taper * 0.25,
+        thinTop,
+        rect.left + taper * 0.75,
+        fullTop,
+        leadEnd,
+        fullTop,
+      );
     } else {
-      path.moveTo(x0, weekdayTop);
+      path.moveTo(rect.left, fullTop);
     }
-    path.lineTo(xNeck - taper, weekdayTop);
-    path.cubicTo(
-      xNeck - taper * 0.25,
-      weekdayTop,
-      xNeck + taper * 0.25,
-      weekendTop,
-      xNeck + taper,
-      weekendTop,
-    );
+    path.lineTo(neckStart, fullTop);
+    if (hasTrailingTaper) {
+      path.cubicTo(
+        neckStart + taper * 0.25,
+        fullTop,
+        neckMid - taper * 0.25,
+        thinTop,
+        neckEnd,
+        thinTop,
+      );
+    }
+
+    // Right edge.
+    final rightTopY = hasTrailingTaper ? thinTop : fullTop;
+    final rightBottomY = hasTrailingTaper ? thinBottom : fullBottom;
     if (roundRight) {
-      path.lineTo(x1 - rightCap, weekendTop);
-      path.arcToPoint(Offset(x1, weekendTop + rightCap), radius: Radius.circular(rightCap));
-      path.lineTo(x1, weekendBottom - rightCap);
-      path.arcToPoint(Offset(x1 - rightCap, weekendBottom), radius: Radius.circular(rightCap));
+      path.lineTo(rect.right - rightCap, rightTopY);
+      path.arcToPoint(
+        Offset(rect.right, rightTopY + rightCap),
+        radius: Radius.circular(rightCap),
+      );
+      path.lineTo(rect.right, rightBottomY - rightCap);
+      path.arcToPoint(
+        Offset(rect.right - rightCap, rightBottomY),
+        radius: Radius.circular(rightCap),
+      );
     } else {
-      path.lineTo(x1, weekendTop);
-      path.lineTo(x1, weekendBottom);
+      path.lineTo(rect.right, rightTopY);
+      path.lineTo(rect.right, rightBottomY);
     }
-    path.lineTo(xNeck + taper, weekendBottom);
-    path.cubicTo(
-      xNeck + taper * 0.25,
-      weekendBottom,
-      xNeck - taper * 0.25,
-      weekdayBottom,
-      xNeck - taper,
-      weekdayBottom,
-    );
-    if (roundLeft) {
-      path.lineTo(x0 + leftCap, weekdayBottom);
-      path.arcToPoint(Offset(x0, weekdayBottom - leftCap), radius: Radius.circular(leftCap));
+
+    // Bottom edge, right to left.
+    if (hasTrailingTaper) {
+      path.lineTo(neckEnd, thinBottom);
+      path.cubicTo(
+        neckMid - taper * 0.25,
+        thinBottom,
+        neckStart + taper * 0.25,
+        fullBottom,
+        neckStart,
+        fullBottom,
+      );
     } else {
-      path.lineTo(x0, weekdayBottom);
+      path.lineTo(neckStart, fullBottom);
+    }
+    if (leadingTaper) {
+      path.lineTo(leadEnd, fullBottom);
+      path.cubicTo(
+        rect.left + taper * 0.75,
+        fullBottom,
+        rect.left + taper * 0.25,
+        thinBottom,
+        rect.left,
+        thinBottom,
+      );
+    } else if (roundLeft) {
+      path.lineTo(rect.left + leftCap, fullBottom);
+      path.arcToPoint(
+        Offset(rect.left, fullBottom - leftCap),
+        radius: Radius.circular(leftCap),
+      );
+    } else {
+      path.lineTo(rect.left, fullBottom);
     }
     path.close();
     return path;
@@ -1359,18 +1476,21 @@ class _CrossingPillBorder extends OutlinedBorder {
 }
 
 /// A task bar that spans from a weekday run into its own Saturday/Sunday,
-/// rendered as one continuous [_CrossingPillBorder] shape instead of two
-/// separate pills — so it reads as a single task continuing through the
-/// weekend, not a disconnected block. Also used (with [task] left null) as
-/// the Taskmaster drag preview whenever the selected range itself crosses
-/// a weekend, so the live preview already shows the same taper the
+/// and/or picks up a weekend hand-off from the row above, rendered as one
+/// continuous [_CrossingPillBorder] shape instead of separate touching
+/// widgets — so it reads as a single task continuing through the weekend,
+/// never a disconnected block. Also used (with [task] left null) as the
+/// Taskmaster drag preview whenever the selected range needs the same
+/// treatment, so the live preview already shows the same taper(s) the
 /// finished task will have.
 class _CalendarCrossingPill extends StatefulWidget {
   const _CalendarCrossingPill({
+    required this.colWidth,
     required this.weekdayCols,
     required this.weekendCols,
     required this.roundLeft,
     required this.roundRight,
+    this.leadingTaper = false,
     this.task,
     this.project,
     this.today,
@@ -1379,10 +1499,12 @@ class _CalendarCrossingPill extends StatefulWidget {
     this.onDelete,
   });
 
+  final double colWidth;
   final int weekdayCols;
   final int weekendCols;
   final bool roundLeft;
   final bool roundRight;
+  final bool leadingTaper;
 
   /// Null means this is a drag-preview ghost, not a real task.
   final Task? task;
@@ -1403,12 +1525,12 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
 
   static const _weekdayHeight = 27.0;
   static const _weekendHeight = 8.0;
+  static const _taper = 14.0;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final accent = context.nocturneAccent;
-    final totalCols = widget.weekdayCols + widget.weekendCols;
 
     final Color bg;
     final Color border;
@@ -1447,12 +1569,24 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
     }
 
     final shape = _CrossingPillBorder(
-      weekdayFraction: widget.weekdayCols / totalCols,
+      colWidth: widget.colWidth,
+      weekdayCols: widget.weekdayCols,
+      weekendCols: widget.weekendCols,
+      leadingTaper: widget.leadingTaper,
       weekdayHeight: _weekdayHeight,
       weekendHeight: _weekendHeight,
       roundLeft: widget.roundLeft,
       roundRight: widget.roundRight,
       side: BorderSide(color: border, width: sideWidth),
+    );
+
+    // Mirrors the shape's own math: content lives in the full-height
+    // region only, inset past the leading taper (if any) — the weekend
+    // neck is too narrow to hold a label either way.
+    final leadInset = widget.leadingTaper ? _taper : 0.0;
+    final contentWidth = math.max(
+      0.0,
+      widget.weekdayCols * widget.colWidth - 2 - leadInset,
     );
 
     Widget pill = SizedBox(
@@ -1463,22 +1597,19 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.isGhost ? null : () => widget.onTap?.call(context),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final weekdayWidth = constraints.maxWidth * widget.weekdayCols / totalCols;
-              // Content lives only in the weekday portion — the weekend
-              // neck is too narrow to hold a label, same as before.
-              return Align(
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: weekdayWidth,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 9),
-                    child: content,
-                  ),
+          child: Stack(
+            children: [
+              Positioned(
+                left: leadInset,
+                top: 0,
+                bottom: 0,
+                width: contentWidth,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  child: content,
                 ),
-              );
-            },
+              ),
+            ],
           ),
         ),
       ),
@@ -1577,7 +1708,13 @@ class _BarPlacement {
 /// Greedily assigns each task active during [rowStart]..[rowEnd] to the
 /// first lane whose existing bars don't overlap its column span — longer
 /// bars are placed first so a multi-day task claims a stable lane rather
-/// than getting split around single-day tasks placed ahead of it.
+/// than getting split around single-day tasks placed ahead of it. Same-day
+/// ties go by [Task.createdAt] rather than title, so adding a new task
+/// (via Taskmaster or otherwise) always appends after every task already
+/// stacked on that day instead of reshuffling them alphabetically — the
+/// existing visible pills keep their lanes exactly as they were, and the
+/// new one either lands in the next free lane or, if the day is already
+/// full, is the one that pushes the overflow count up.
 List<List<_BarPlacement>> _computeLanes(
   List<Task> tasks,
   DateTime rowStart,
@@ -1607,7 +1744,7 @@ List<List<_BarPlacement>> _computeLanes(
     final spanDiff = (b.colEnd - b.colStart) - (a.colEnd - a.colStart);
     if (spanDiff != 0) return spanDiff;
     if (a.colStart != b.colStart) return a.colStart.compareTo(b.colStart);
-    return a.task.title.compareTo(b.task.title);
+    return a.task.createdAt.compareTo(b.task.createdAt);
   });
 
   final lanes = <List<_BarPlacement>>[];
