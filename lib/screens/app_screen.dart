@@ -4,6 +4,7 @@
 /// `ProjectDetailOverlay`).
 enum AppScreen {
   projects,
+  search,
   today,
   upcoming,
   calendar,
