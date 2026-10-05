@@ -109,9 +109,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Timer? _edgeAdvanceTimer;
   DateTime? _edgeAdvanceTarget;
 
+  /// The task just created via Taskmaster, if any — shown as a brief
+  /// overlay pill by whichever [_WeekRow] it falls in, but only when that
+  /// row finds it buried in the overflow (a day that wasn't already full
+  /// just shows the task normally, no overlay needed). See
+  /// `_JustCreatedFlashPill`. EASY REVERT: this field, its timer, and the
+  /// `justCreatedTaskId:` argument on both `_WeekRow(...)` calls below are
+  /// the entire feature — delete them to restore the old silent behavior.
+  String? _justCreatedTaskId;
+  Timer? _justCreatedTimer;
+
   @override
   void dispose() {
     _edgeAdvanceTimer?.cancel();
+    _justCreatedTimer?.cancel();
     super.dispose();
   }
 
@@ -201,6 +212,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           start,
           dueDateEnd: _isSameDay(start, end) ? null : end,
         );
+    _justCreatedTimer?.cancel();
+    setState(() => _justCreatedTaskId = task.id);
+    _justCreatedTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _justCreatedTaskId = null);
+    });
   }
 
   /// A task filed under a project opens that project, scrolled to it; an
@@ -373,6 +389,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                     taskmasterOn: _taskmasterOn,
                                     onTaskDelete: onTaskDelete,
                                     dragRange: dragRange,
+                                    justCreatedTaskId: _justCreatedTaskId,
                                   ),
                                 ),
                             ],
@@ -392,6 +409,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             taskmasterOn: _taskmasterOn,
                             onTaskDelete: onTaskDelete,
                             dragRange: dragRange,
+                            justCreatedTaskId: _justCreatedTaskId,
                           ),
                   ),
                 );
@@ -422,6 +440,7 @@ class _WeekRow extends StatelessWidget {
     this.taskmasterOn = false,
     required this.onTaskDelete,
     this.dragRange,
+    this.justCreatedTaskId,
   });
 
   final DateTime rowStart;
@@ -445,6 +464,13 @@ class _WeekRow extends StatelessWidget {
   /// The inclusive [start, end] of a Taskmaster drag-in-progress, if any —
   /// days within it get a highlight tint.
   final (DateTime, DateTime)? dragRange;
+
+  /// The id of a task just created via Taskmaster, if any — when it lands
+  /// in this row's overflow (buried under a day's "+N more" chip), it gets
+  /// a brief overlay pill so it's visible for a moment before settling into
+  /// the count, rather than just silently bumping the number. A day that
+  /// wasn't already full shows the task normally and needs no overlay.
+  final String? justCreatedTaskId;
 
   /// The row's own slice of an in-progress Taskmaster drag — null if the
   /// drag (if any) doesn't touch this week at all. Mirrors how a real
@@ -532,6 +558,20 @@ class _WeekRow extends StatelessWidget {
         );
         if (!occupied) {
           ghostLane = i;
+          break;
+        }
+      }
+    }
+
+    // Only set when the just-created task actually landed in THIS row's
+    // overflow — a day that had room shows the task as a normal visible
+    // bar already, so no overlay is needed on top of it.
+    _BarPlacement? justCreatedPlacement;
+    if (justCreatedTaskId != null) {
+      for (final lane in hiddenLanes) {
+        final match = lane.where((p) => p.task.id == justCreatedTaskId);
+        if (match.isNotEmpty) {
+          justCreatedPlacement = match.first;
           break;
         }
       }
@@ -641,9 +681,82 @@ class _WeekRow extends StatelessWidget {
                     child: _buildGhost(dragSpan, colWidth),
                   ),
                 ),
+              if (justCreatedPlacement != null)
+                Positioned(
+                  key: ValueKey('just-created-${justCreatedPlacement.task.id}'),
+                  left: justCreatedPlacement.colStart * colWidth + 2,
+                  width:
+                      (justCreatedPlacement.colEnd -
+                              justCreatedPlacement.colStart +
+                              1) *
+                          colWidth -
+                      4,
+                  // Same vertical slot the "+N more" chip occupies — this
+                  // pill is standing in for the task right up until it
+                  // settles into that count.
+                  top: 35 + visibleLanes.length * 30,
+                  height: 27,
+                  child: _JustCreatedFlashPill(
+                    child: _TaskBar(
+                      placement: justCreatedPlacement,
+                      today: DateTime.now(),
+                      project: projectsById[justCreatedPlacement.task.projectId],
+                      onTap: (_) {},
+                      taskmasterOn: false,
+                      onDelete: () {},
+                      roundLeft: true,
+                      roundRight: true,
+                    ),
+                  ),
+                ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Wraps a just-created task's overlay pill (see
+/// [_WeekRow.justCreatedTaskId]) so it holds fully visible for a moment,
+/// then fades itself out — the task is already counted correctly in the
+/// "+N more" chip underneath for the pill's entire lifetime, so nothing
+/// else needs to change when it disappears.
+class _JustCreatedFlashPill extends StatefulWidget {
+  const _JustCreatedFlashPill({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_JustCreatedFlashPill> createState() => _JustCreatedFlashPillState();
+}
+
+class _JustCreatedFlashPillState extends State<_JustCreatedFlashPill> {
+  double _opacity = 1;
+  Timer? _fadeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _opacity = 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _fadeTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: _opacity,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
