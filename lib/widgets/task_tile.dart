@@ -191,6 +191,12 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                   label: formatDueLabel(task, settings.dateFormat),
                   icon: Icons.access_time,
                   outline: true,
+                  // Neutral, not the Appearance accent — matches the rest of
+                  // the row's text/icons, same overdue-red rule as the
+                  // detail view's own due-date field (_DueDateRow below).
+                  color: task.dueDate!.isBefore(DateTime.now()) && !task.isChecked
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).hintColor,
                 ),
                 const SizedBox(width: 6),
               ],

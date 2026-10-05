@@ -1182,15 +1182,21 @@ _TaskBarStyle _resolveTaskBarStyle(
       ? tokens.neutral500
       : (isOverdue ? NocturnePriority.high : accent);
   // Blended onto the opaque surface color (rather than left translucent) so
-  // the grid lines and shading behind a bar never show through it.
-  final bg = Color.alphaBlend(statusColor.withValues(alpha: 0.12), tokens.surface);
+  // the grid lines and shading behind a bar never show through it. A
+  // stronger wash than the button-style 0.12 that comment references: the
+  // Calendar's own background is itself a faint accent tint (`tokens.bg`,
+  // see buildNocturneTheme), so a bar tinted at that same low strength reads
+  // as barely-there against it. Pushed up so the bar still reads as a
+  // distinct colored block, not just colored text, without going so opaque
+  // it fights the full-strength text/icons drawn on top of it.
+  final bg = Color.alphaBlend(statusColor.withValues(alpha: 0.28), tokens.surface);
   final originColor =
       project != null ? accentPalette[project.colorIndex] : tokens.neutral500;
 
   return _TaskBarStyle(
     bg: bg,
     fg: statusColor,
-    border: statusColor.withValues(alpha: 0.6),
+    border: statusColor.withValues(alpha: 0.85),
     originColor: originColor,
     originLabel: project != null ? project.name : 'Unfiled',
     priorityColor: switch (task.priority) {
