@@ -1639,6 +1639,19 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
       child: Material(
         color: bg,
         shape: shape,
+        // `_CrossingPillBorder` doesn't override lerpFrom/lerpTo, so
+        // Material's own default shape animation (200ms unless told
+        // otherwise) falls back to abruptly swapping between the old and
+        // new border instance partway through — completely unsynced from
+        // the box's own 150ms AnimatedPositioned width tween above. For one
+        // or two frames that leaves the OLD (narrower) weekdayCols/
+        // weekendCols split painting into the NEW (already-growing) rect,
+        // which is what produced the brief full-height flash when a drag
+        // first extends into the weekend. The shape's own math already
+        // handles the visual transition smoothly frame-to-frame as `rect`
+        // grows, so Material's redundant animation only needs to be turned
+        // off, not replaced.
+        animationDuration: Duration.zero,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.isGhost ? null : () => widget.onTap?.call(context),
