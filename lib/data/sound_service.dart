@@ -18,7 +18,7 @@ class SoundService {
   Future<void> playCheckoff() async {
     try {
       await _player.stop();
-      await _player.play(AssetSource('sounds/checkoff_chime.wav'), volume: 0.6);
+      await _player.play(AssetSource('sounds/checkoff_chime.wav'), volume: 0.35);
     } catch (_) {
       // Best-effort: no audio output, unsupported platform, etc.
     }
