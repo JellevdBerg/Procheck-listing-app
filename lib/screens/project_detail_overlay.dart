@@ -50,13 +50,20 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
   /// At most one task is expanded at a time in this project's list —
   /// opening one collapses whichever other task was open.
   String? _expandedTaskId;
+  Timer? _expandTimer;
+
+  /// How long after this overlay opens with a [highlightTaskId] before that
+  /// task auto-expands — gives the card-morph animation (320ms, see
+  /// [AppShell]) and the scroll-into-view a moment to settle first, rather
+  /// than the task popping open instantly underneath them.
+  static const _autoExpandDelay = Duration(milliseconds: 450);
 
   @override
   void initState() {
     super.initState();
     _highlightedTaskId = widget.highlightTaskId;
-    _expandedTaskId = widget.highlightTaskId;
     _armHighlightTimer();
+    _armExpandTimer();
   }
 
   @override
@@ -66,18 +73,26 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
       setState(() {
         _highlightedTaskId = widget.highlightTaskId;
         _scrolledToHighlight = false;
-        if (widget.highlightTaskId != null) {
-          _expandedTaskId = widget.highlightTaskId;
-        }
       });
       _armHighlightTimer();
+      _armExpandTimer();
     }
   }
 
   @override
   void dispose() {
     _highlightTimer?.cancel();
+    _expandTimer?.cancel();
     super.dispose();
+  }
+
+  void _armExpandTimer() {
+    _expandTimer?.cancel();
+    final taskId = widget.highlightTaskId;
+    if (taskId == null) return;
+    _expandTimer = Timer(_autoExpandDelay, () {
+      if (mounted) setState(() => _expandedTaskId = taskId);
+    });
   }
 
   void _armHighlightTimer() {
