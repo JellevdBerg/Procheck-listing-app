@@ -448,23 +448,24 @@ class _WeekRow extends StatelessWidget {
     );
   }
 
-  /// The preview widget for a drag span clipped to this row — a plain
-  /// ghost pill normally, or the tapered [_CalendarCrossingPill] whenever
-  /// this segment runs into its own weekend, or itself picks up from a
-  /// weekend the previous row's segment ended in (`!roundLeft` always means
-  /// that, since every row is Monday-through-Sunday).
+  /// The preview widget for a drag span clipped to this row, always built
+  /// as a [_CalendarCrossingPill] — even for a plain, non-crossing span —
+  /// so the same widget (and `State`) persists for an entire drag rather
+  /// than swapping types the instant `crossesWeekend`/`leadingTaper` flips.
+  /// [_CalendarCrossingPill] already renders a plain span identically to a
+  /// bare pill (its own geometry collapses to one when there's no weekend
+  /// connector to draw), so nothing looks different in that case — but
+  /// shrinking back out of a weekend no longer has a one-frame "reset to a
+  /// fresh, full-width pill" flash the way swapping to a separate widget
+  /// did: that swap discarded this element's `State` (and restarted its
+  /// entrance pop) at the exact moment the box's `AnimatedPositioned` width
+  /// was still mid-tween down from the wider, weekend-inclusive span.
   Widget _buildGhost(
     ({int colStart, int colEnd, bool roundLeft, bool roundRight}) dragSpan,
     double colWidth,
   ) {
     final crossesWeekend = dragSpan.colStart <= 4 && dragSpan.colEnd >= 5;
     final leadingTaper = !dragSpan.roundLeft;
-    if (!crossesWeekend && !leadingTaper) {
-      return _DragGhostBar(
-        roundLeft: dragSpan.roundLeft,
-        roundRight: dragSpan.roundRight,
-      );
-    }
     return _CalendarCrossingPill(
       colWidth: colWidth,
       weekdayCols: crossesWeekend
@@ -1355,10 +1356,23 @@ class _CrossingPillBorder extends OutlinedBorder {
     final thinTop = rect.top + (rect.height - weekendHeight) / 2;
     final thinBottom = thinTop + weekendHeight;
 
-    final hasTrailingTaper = weekendCols > 0;
-    final neckMid = hasTrailingTaper
-        ? (rect.left + weekdayCols * colWidth - 2).clamp(rect.left, rect.right)
-        : rect.right;
+    // The weekday/weekend boundary's absolute position, independent of the
+    // box's own current width (see the class doc). Whether to actually
+    // draw a trailing connector is then decided by comparing the box's
+    // real right edge to this boundary, rather than reading [weekendCols]
+    // directly: while a drag shrinks back out of its own weekend,
+    // [weekendCols] drops to 0 the instant the pointer crosses back onto a
+    // weekday, but the box's `AnimatedPositioned` width takes another
+    // 150ms to tween down to the new, weekend-less span — so for that
+    // whole stretch the box is still visibly wider than the boundary, and
+    // the connector needs to keep rendering (shrinking smoothly along with
+    // the box) instead of vanishing instantly into a full-width pill.
+    final weekdayBoundary = (rect.left + weekdayCols * colWidth - 2).clamp(
+      rect.left,
+      rect.right,
+    );
+    final hasTrailingTaper = rect.right > weekdayBoundary + 0.5;
+    final neckMid = weekdayBoundary;
 
     final fullCapR = _capRadius(false);
     final thinCapR = _capRadius(true);
@@ -1592,67 +1606,21 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
         onExit: (_) => setState(() => _hovering = false),
         child: pill,
       );
+    } else {
+      // A fresh drag's very first frame should still pop in, same as
+      // before this widget also took over the plain (non-crossing) ghost
+      // case — but only once: a TweenAnimationBuilder with an unchanging
+      // begin/end doesn't replay on the rebuilds a live drag causes every
+      // time the pointer moves.
+      pill = TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.85, end: 1),
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        builder: (context, scale, child) => Opacity(opacity: scale, child: child),
+        child: pill,
+      );
     }
     return pill;
-  }
-}
-
-/// A live preview of the task being drawn by a Taskmaster drag — its
-/// position/size track the pointer via [_WeekRow]'s own rebuilds (animated
-/// by the `AnimatedPositioned` that places it), while this widget adds a
-/// quick fade/scale-in of its own so the very first appearance also reads
-/// as "growing in", not just a pop.
-class _DragGhostBar extends StatelessWidget {
-  const _DragGhostBar({required this.roundLeft, required this.roundRight});
-
-  final bool roundLeft;
-  final bool roundRight;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    final accent = context.nocturneAccent;
-    final radius = BorderRadius.horizontal(
-      left: roundLeft ? const Radius.circular(13) : Radius.zero,
-      right: roundRight ? const Radius.circular(13) : Radius.zero,
-    );
-    final bg = Color.alphaBlend(accent.withValues(alpha: 0.18), tokens.surface);
-
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.85, end: 1),
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOut,
-      builder: (context, scale, child) =>
-          Opacity(opacity: scale, child: child),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: radius,
-          border: Border.all(color: accent.withValues(alpha: 0.8), width: 1.4),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 9),
-          child: Row(
-            children: [
-              Icon(Icons.add, size: 13, color: accent),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  'New task',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 
