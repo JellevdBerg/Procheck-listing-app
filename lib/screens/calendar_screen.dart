@@ -1285,18 +1285,20 @@ class _DeleteDot extends StatelessWidget {
 }
 
 /// The outline of a task bar that runs from a weekday into its own weekend,
-/// or that picks up a weekend hand-off from the row above: a full-height
-/// capsule that necks down (or up), through a smooth S-curve in its own
-/// contour, into a slim capsule — one continuous [Path], so there's no seam
-/// anywhere the shape changes height.
+/// or that picks up a weekend hand-off from the row above: the weekday
+/// portion is a normal, undeformed rounded pill (never cut or tapered), and
+/// a separate, thinner connector bar is unioned onto it wherever the task
+/// continues into a weekend — overlapping back into the pill's own rounded
+/// cap region so it reads as emerging from that cap's curve, rather than
+/// the pill itself changing shape.
 ///
-/// [weekdayCols]/[weekendCols]/[colWidth] place the weekday→weekend taper
-/// at a fixed pixel offset from the box's own left edge — `weekdayCols *
-/// colWidth`, the same 2px-inset convention every crossing pill is drawn
-/// with — rather than a fraction of the box's own (possibly still
-/// mid-animation, while a drag is growing it) width. That keeps the taper
-/// pinned to its grid column boundary at every frame instead of drifting
-/// while the box's far edge eases toward its new size.
+/// [weekdayCols]/[weekendCols]/[colWidth] place the weekday/weekend
+/// boundary at a fixed pixel offset from the box's own left edge —
+/// `weekdayCols * colWidth`, the same 2px-inset convention every crossing
+/// pill is drawn with — rather than a fraction of the box's own (possibly
+/// still mid-animation, while a drag is growing it) width. That keeps the
+/// boundary pinned to its grid column line at every frame instead of
+/// drifting while the box's far edge eases toward its new size.
 class _CrossingPillBorder extends OutlinedBorder {
   const _CrossingPillBorder({
     required this.colWidth,
@@ -1340,6 +1342,13 @@ class _CrossingPillBorder extends OutlinedBorder {
   double _capRadius(bool thin) =>
       math.min(13.0, (thin ? weekendHeight : weekdayHeight) / 2);
 
+  /// Visible length of the thin leading connector before it's absorbed into
+  /// the pill's own left cap — there's no real grid boundary to anchor this
+  /// side to (unlike [neckMid] on the trailing side), so it's a fixed,
+  /// purely cosmetic length. [_CalendarCrossingPillState] uses the same
+  /// value to inset its content past this connector.
+  static const double leadConnectorLength = 16.0;
+
   Path _buildPath(Rect rect) {
     final fullTop = rect.top + (rect.height - weekdayHeight) / 2;
     final fullBottom = fullTop + weekdayHeight;
@@ -1351,107 +1360,68 @@ class _CrossingPillBorder extends OutlinedBorder {
         ? (rect.left + weekdayCols * colWidth - 2).clamp(rect.left, rect.right)
         : rect.right;
 
-    var taper = 14.0;
-    if (leadingTaper) taper = math.min(taper, neckMid - rect.left);
-    if (hasTrailingTaper) taper = math.min(taper, rect.right - neckMid);
-    if (leadingTaper && hasTrailingTaper) {
-      taper = math.min(taper, (neckMid - rect.left) / 2);
-    }
-    taper = math.max(taper, 0);
+    final fullCapR = _capRadius(false);
+    final thinCapR = _capRadius(true);
+    // How far a thin connector reaches back past the weekday/weekend
+    // boundary into the pill's own rounded cap, so the union shows no seam
+    // at the cap's tangent point — the thin bar should read as emerging
+    // from partway along the cap's curve, not butting flush against it.
+    final overlap = fullCapR * 0.9;
 
-    final leadEnd = rect.left + (leadingTaper ? taper : 0);
-    final neckStart = hasTrailingTaper ? neckMid - taper : rect.right;
-    final neckEnd = neckMid + taper;
-    final leftCap = _capRadius(false);
-    final rightCap = _capRadius(hasTrailingTaper);
-
-    final path = Path();
-
-    // Top edge, left to right.
-    if (roundLeft) {
-      path.moveTo(rect.left, fullTop + leftCap);
-      path.arcToPoint(
-        Offset(rect.left + leftCap, fullTop),
-        radius: Radius.circular(leftCap),
+    // The weekday portion is always a normal, undeformed rounded pill —
+    // both its ends get a full cap regardless of whether that end is a
+    // real range boundary or a weekend connector is about to overlap into
+    // it, since either way the cap itself should stay visually intact. Each
+    // bound is pulled in from the box's own edge whenever a connector is
+    // present on that side: the pill's own cap radius is close to half its
+    // height, so a cap anchored flush with the box edge would already
+    // reach all the way to it and swallow a connector entirely — pulling
+    // the bound in leaves room for the thin bar to visibly continue past it.
+    final pillLeft = leadingTaper ? rect.left + leadConnectorLength : rect.left;
+    final pillRight = hasTrailingTaper ? neckMid : rect.right;
+    var path = Path()
+      ..addRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTRB(pillLeft, fullTop, pillRight, fullBottom),
+          topLeft: Radius.circular(fullCapR),
+          bottomLeft: Radius.circular(fullCapR),
+          topRight: (hasTrailingTaper || roundRight)
+              ? Radius.circular(fullCapR)
+              : Radius.zero,
+          bottomRight: (hasTrailingTaper || roundRight)
+              ? Radius.circular(fullCapR)
+              : Radius.zero,
+        ),
       );
-    } else if (leadingTaper) {
-      path.moveTo(rect.left, thinTop);
-      path.cubicTo(
-        rect.left + taper * 0.25,
-        thinTop,
-        rect.left + taper * 0.75,
-        fullTop,
-        leadEnd,
-        fullTop,
-      );
-    } else {
-      path.moveTo(rect.left, fullTop);
-    }
-    path.lineTo(neckStart, fullTop);
+
     if (hasTrailingTaper) {
-      path.cubicTo(
-        neckStart + taper * 0.25,
-        fullTop,
-        neckMid - taper * 0.25,
-        thinTop,
-        neckEnd,
-        thinTop,
+      final trailLeft = (neckMid - overlap).clamp(rect.left, rect.right);
+      path = Path.combine(
+        PathOperation.union,
+        path,
+        Path()
+          ..addRRect(
+            RRect.fromRectAndCorners(
+              Rect.fromLTRB(trailLeft, thinTop, rect.right, thinBottom),
+              topRight: roundRight ? Radius.circular(thinCapR) : Radius.zero,
+              bottomRight: roundRight ? Radius.circular(thinCapR) : Radius.zero,
+            ),
+          ),
       );
     }
 
-    // Right edge.
-    final rightTopY = hasTrailingTaper ? thinTop : fullTop;
-    final rightBottomY = hasTrailingTaper ? thinBottom : fullBottom;
-    if (roundRight) {
-      path.lineTo(rect.right - rightCap, rightTopY);
-      path.arcToPoint(
-        Offset(rect.right, rightTopY + rightCap),
-        radius: Radius.circular(rightCap),
-      );
-      path.lineTo(rect.right, rightBottomY - rightCap);
-      path.arcToPoint(
-        Offset(rect.right - rightCap, rightBottomY),
-        radius: Radius.circular(rightCap),
-      );
-    } else {
-      path.lineTo(rect.right, rightTopY);
-      path.lineTo(rect.right, rightBottomY);
-    }
-
-    // Bottom edge, right to left.
-    if (hasTrailingTaper) {
-      path.lineTo(neckEnd, thinBottom);
-      path.cubicTo(
-        neckMid - taper * 0.25,
-        thinBottom,
-        neckStart + taper * 0.25,
-        fullBottom,
-        neckStart,
-        fullBottom,
-      );
-    } else {
-      path.lineTo(neckStart, fullBottom);
-    }
     if (leadingTaper) {
-      path.lineTo(leadEnd, fullBottom);
-      path.cubicTo(
-        rect.left + taper * 0.75,
-        fullBottom,
-        rect.left + taper * 0.25,
-        thinBottom,
-        rect.left,
-        thinBottom,
+      final leadRight = (pillLeft + overlap).clamp(rect.left, rect.right);
+      path = Path.combine(
+        PathOperation.union,
+        path,
+        // The left edge is a continuation cut off by the row boundary, not
+        // a real end, so it stays flat — only the pill's own real ends
+        // (handled above) ever get a cap.
+        Path()..addRRect(RRect.fromRectAndCorners(Rect.fromLTRB(rect.left, thinTop, leadRight, thinBottom))),
       );
-    } else if (roundLeft) {
-      path.lineTo(rect.left + leftCap, fullBottom);
-      path.arcToPoint(
-        Offset(rect.left, fullBottom - leftCap),
-        radius: Radius.circular(leftCap),
-      );
-    } else {
-      path.lineTo(rect.left, fullBottom);
     }
-    path.close();
+
     return path;
   }
 
@@ -1525,7 +1495,6 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
 
   static const _weekdayHeight = 27.0;
   static const _weekendHeight = 8.0;
-  static const _taper = 14.0;
 
   @override
   Widget build(BuildContext context) {
@@ -1581,9 +1550,11 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
     );
 
     // Mirrors the shape's own math: content lives in the full-height
-    // region only, inset past the leading taper (if any) — the weekend
-    // neck is too narrow to hold a label either way.
-    final leadInset = widget.leadingTaper ? _taper : 0.0;
+    // pill region only, inset past the leading connector (if any) — the
+    // thin weekend bar is too narrow to hold a label either way.
+    final leadInset = widget.leadingTaper
+        ? _CrossingPillBorder.leadConnectorLength
+        : 0.0;
     final contentWidth = math.max(
       0.0,
       widget.weekdayCols * widget.colWidth - 2 - leadInset,
