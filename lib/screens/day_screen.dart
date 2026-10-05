@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import '../widgets/project_name_lookup.dart';
@@ -50,57 +51,75 @@ class DayScreen extends ConsumerWidget {
 
     final projectNames = buildProjectNameLookup(projects);
     final label = '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
+    final tokens = context.nocturne;
 
-    return ListView(
-      padding: const EdgeInsets.all(16.8),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Tasks for $label',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+    // See today_screen.dart's build method for why the task list is a
+    // DecoratedSliver/SliverList rather than a Column-in-a-Card — a single
+    // day is naturally bounded, but the same lazy-building treatment keeps
+    // every smart view consistent.
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 0),
+          sliver: SliverToBoxAdapter(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Tasks for $label',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                NocturneButton(
+                  label: 'New task',
+                  icon: Icons.add,
+                  dense: true,
+                  onPressed: () => showCreateTaskSheet(context),
+                ),
+              ],
             ),
-            NocturneButton(
-              label: 'New task',
-              icon: Icons.add,
-              dense: true,
-              onPressed: () => showCreateTaskSheet(context),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 16.8),
         if (dayTasks.isEmpty)
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(22.4),
-              child: Center(
-                child: Text(
-                  'No tasks due this day.',
-                  style: Theme.of(context).textTheme.bodyMedium,
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 16.8),
+            sliver: SliverToBoxAdapter(
+              child: Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(22.4),
+                  child: Center(
+                    child: Text(
+                      'No tasks due this day.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
                 ),
               ),
             ),
           )
         else
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 11.2),
-              child: Column(
-                children: [
-                  for (final task in dayTasks)
-                    SmartViewTaskRow(
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 16.8),
+            sliver: DecoratedSliver(
+              decoration: BoxDecoration(
+                color: tokens.surface,
+                borderRadius: BorderRadius.circular(NocturneRadius.md),
+                border: Border.all(color: tokens.neutral800),
+              ),
+              sliver: SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 11.2),
+                sliver: SliverList.builder(
+                  itemCount: dayTasks.length,
+                  itemBuilder: (context, index) {
+                    final task = dayTasks[index];
+                    return SmartViewTaskRow(
                       task: task,
                       reduceMotion: reduceMotion,
-                      projectName: projectNameFor(
-                        projectNames,
-                        task.projectId,
-                      ),
-                    ),
-                ],
+                      projectName: projectNameFor(projectNames, task.projectId),
+                    );
+                  },
+                ),
               ),
             ),
           ),

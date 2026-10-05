@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
 import '../widgets/project_name_lookup.dart';
 import '../widgets/smart_view_task_row.dart';
 import 'empty_state.dart';
@@ -40,25 +41,41 @@ class UpcomingScreen extends ConsumerWidget {
     }
 
     final projectNames = buildProjectNameLookup(projects);
+    final tokens = context.nocturne;
 
-    return ListView(
-      padding: const EdgeInsets.all(16.8),
-      children: [
-        Text('Upcoming', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16.8),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11.2),
-            child: Column(
-              children: [
-                for (final task in upcomingTasks)
-                  SmartViewTaskRow(
+    // See today_screen.dart's build method for why this is a
+    // CustomScrollView/SliverList rather than a Column-in-a-Card: Upcoming
+    // is the smart view most likely to hold most of a workspace's open
+    // tasks, so lazily building only the visible rows matters most here.
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 0),
+          sliver: SliverToBoxAdapter(
+            child: Text('Upcoming', style: Theme.of(context).textTheme.headlineSmall),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16.8, 16.8, 16.8, 16.8),
+          sliver: DecoratedSliver(
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              borderRadius: BorderRadius.circular(NocturneRadius.md),
+              border: Border.all(color: tokens.neutral800),
+            ),
+            sliver: SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 11.2),
+              sliver: SliverList.builder(
+                itemCount: upcomingTasks.length,
+                itemBuilder: (context, index) {
+                  final task = upcomingTasks[index];
+                  return SmartViewTaskRow(
                     task: task,
                     reduceMotion: reduceMotion,
                     projectName: projectNameFor(projectNames, task.projectId),
-                  ),
-              ],
+                  );
+                },
+              ),
             ),
           ),
         ),

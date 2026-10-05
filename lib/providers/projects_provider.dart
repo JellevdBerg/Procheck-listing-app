@@ -18,6 +18,9 @@ final projectsProvider = StateNotifierProvider<ProjectsNotifier, List<Project>>(
   },
 );
 
+/// See [ProjectsNotifier.logActivity].
+const _maxActivityLogEntries = 200;
+
 /// Persistence to Hive is fire-and-forget: [state] is the source of truth
 /// for the UI and is updated synchronously, while the on-disk copy catches
 /// up in the background.
@@ -166,10 +169,21 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   /// Appends an entry to [id]'s Activity log — called by [TasksNotifier] for
   /// task-level events (added/completed/edited) on tasks filed under a
   /// project, in addition to [addProject]'s own "created" entry.
+  ///
+  /// Capped to the most recent [_maxActivityLogEntries]: a long-lived
+  /// project otherwise accumulates one entry per task event forever, and
+  /// since the whole log is persisted with the project's Hive record (not
+  /// lazily loaded), an uncapped log makes every single edit to that
+  /// project progressively more expensive to save. The feed only ever
+  /// shows the most recent entries anyway (see dashboard_screen.dart's
+  /// `_buildActivityFeed`), so older ones being dropped is unobservable.
   void logActivity(String id, ActivityEntry entry) {
     final project = _box.get(id);
     if (project == null) return;
-    project.activityLog = [...project.activityLog, entry];
+    final updated = [...project.activityLog, entry];
+    project.activityLog = updated.length > _maxActivityLogEntries
+        ? updated.sublist(updated.length - _maxActivityLogEntries)
+        : updated;
     unawaited(project.save());
     state = [
       for (final p in state)
