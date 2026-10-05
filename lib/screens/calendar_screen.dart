@@ -14,6 +14,12 @@ import '../theme/nocturne_theme.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 
+/// How long the Taskmaster drag-preview ghost's `AnimatedPositioned` takes
+/// to tween to a new position/width — shared with `_CalendarCrossingPillState`
+/// so its post-weekend-exit linger window (see `_weekendLingerUntil`) stays
+/// in sync with how long the box actually takes to catch up.
+const _dragGhostAnimationDuration = Duration(milliseconds: 150);
+
 const _monthNames = [
   'January',
   'February',
@@ -619,7 +625,7 @@ class _WeekRow extends StatelessWidget {
               if (dragSpan != null)
                 AnimatedPositioned(
                   key: const ValueKey('drag-ghost'),
-                  duration: const Duration(milliseconds: 150),
+                  duration: _dragGhostAnimationDuration,
                   curve: Curves.easeOut,
                   left: dragSpan.colStart * colWidth + 2,
                   width:
@@ -1546,27 +1552,36 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
   static const _weekdayHeight = 27.0;
   static const _weekendHeight = 8.0;
 
-  // Whether the *previous* configuration of this widget had a trailing
-  // weekend connector — true for exactly one rebuild right after a drag
-  // shrinks back out of its own weekend, which is what lets the shape
-  // keep drawing (and smoothly retracting) that connector below while its
-  // box is still animating down from the wider, weekend-inclusive size.
-  // Without this, [_CrossingPillBorder] would have no way to tell "box is
-  // still wide because it's catching up from a weekend" apart from "box is
-  // still wide because it's just a bigger plain weekday span shrinking" —
-  // and would wrongly paint a connector for the latter too.
-  bool _recentlyHadWeekend = false;
+  // How long to keep drawing a trailing weekend connector after [widget]
+  // itself has already dropped to weekendCols == 0, so the connector can
+  // keep shrinking alongside the box's own [_dragGhostAnimationDuration]
+  // width tween instead of vanishing the instant the drag crosses back onto
+  // a weekday. A single rebuild's worth of "did the *previous* widget have a
+  // weekend" isn't enough: a fast, continuous drag fires several rebuilds
+  // (one per pointer-move) within that same still-animating window, and the
+  // *second* one already sees a weekend-less previous widget too — clearing
+  // the linger before the box has actually caught up, and flashing straight
+  // to a full-width weekday pill. Tracking wall-clock time since the real
+  // exit instead survives any number of rebuilds inside the window.
+  DateTime? _weekendLingerUntil;
 
-  @override
-  void initState() {
-    super.initState();
-    _recentlyHadWeekend = widget.weekendCols > 0;
+  bool get _allowTrailingLinger {
+    final until = _weekendLingerUntil;
+    return until != null && DateTime.now().isBefore(until);
   }
 
   @override
   void didUpdateWidget(covariant _CalendarCrossingPill oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _recentlyHadWeekend = oldWidget.weekendCols > 0;
+    if (widget.weekendCols > 0) {
+      // Genuinely back in the weekend — the shape's own `weekendCols > 0`
+      // branch handles this directly, no lingering needed.
+      _weekendLingerUntil = null;
+    } else if (oldWidget.weekendCols > 0) {
+      _weekendLingerUntil = DateTime.now().add(_dragGhostAnimationDuration);
+    }
+    // A plain weekday-to-weekday rebuild (both old and new weekendCols == 0)
+    // leaves an already-running linger window untouched.
   }
 
   @override
@@ -1614,7 +1629,7 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
       colWidth: widget.colWidth,
       weekdayCols: widget.weekdayCols,
       weekendCols: widget.weekendCols,
-      allowTrailingLinger: _recentlyHadWeekend,
+      allowTrailingLinger: _allowTrailingLinger,
       leadingTaper: widget.leadingTaper,
       weekdayHeight: _weekdayHeight,
       weekendHeight: _weekendHeight,
