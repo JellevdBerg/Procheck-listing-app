@@ -1,16 +1,59 @@
 # ProCheck
 
-ProCheck is a lightweight cross-platform task app built with Flutter. Organize tasks into projects, break a task into subtasks, and reuse task templates whenever you need that same structure again.
+ProCheck is a lightweight cross-platform task app built with Flutter. Organize work into projects, plan it on a full calendar, and reuse task templates whenever you need that same structure again.
+
+![Projects](docs/screenshots/projects.png)
 
 ## Features
 
-- **Projects** — group related tasks together (e.g. "Onboarding", "Weekly routine"), each with its own accent color and a search field to find one quickly. Projects sort by most-recently-opened and lay out as a centered, responsive grid: a single project sits centered rather than stretching edge-to-edge, and more projects fill in left-to-right before wrapping to a new row; extra projects beyond that show as compact chips below. Deleting a project (or a standalone task) plays a playful shrink-and-pop-out animation, with the remaining items smoothly resettling into place afterward. Hover a project (or a task) to reveal a delete button.
-- **Tasks & subtasks** — a task can carry notes and a list of subtasks. Checking either off plays a quick "wobble" animation, and checking off every subtask automatically checks the task (toggling the task cascades back down to all its subtasks). Tap a task to expand it in place — subtasks appear below it, notes in a panel beside them. A task with no project is a quick one-off: checking it off removes it instead of leaving it around.
-- **Opening a project** shows it in a left-side vertical hero (folder icon on top, the project name running vertically beneath it) instead of a horizontal title bar, and the rest of the app sinks away behind it while the project's tasks slide in from the right. Everything in that view — checkboxes, the add-task button — picks up the project's own accent color, so it's obvious at a glance which project you're in; this is purely a per-screen accent and never touches the app's global theme or the project's stored color.
-- **Templates** — define a main task and its subtasks once as a template, then spin up new tasks from it whenever you need that same structure again.
-- **Settings** — theme (system/light/dark), a curated accent color palette, a "reduce motion" toggle for the app's animations, and a "Wipe all data" option that resets the app to a clean first-run state.
-- A brief splash screen greets you with the logo on launch; the "add project/task" flow opens as a centered, blurred-backdrop dialog rather than a bottom sheet.
-- Works on Android, iOS, web, and Windows/Linux desktop from a single codebase. Data is stored locally on-device (via [Hive](https://pub.dev/packages/hive)), no account or server required. On Windows, data lives under `%LocalAppData%\ProCheck` (older installs that had data in Documents are migrated automatically on first launch).
+### Projects, tasks & subtasks
+
+Group related tasks into projects, each with its own accent color. A task can carry notes, a due date (or a due-date **range**, picked from one tap-driven calendar), a priority, file attachments, and a list of subtasks — checking off every subtask automatically checks the task, and toggling the task cascades back down. Opening a task expands it in place, showing its subtasks and notes beside it; opening another task in the same project automatically collapses the previous one (accordion-style). Checking off a task plays a short chime.
+
+![Project detail, expanded task with subtasks and notes](docs/screenshots/project-detail.png)
+
+### Dashboard
+
+A one-page overview of all your active projects: overdue/due-this-week counts and overall completion, a "Today & Needs Attention" list, a task-status breakdown, a sortable projects table, and a recent-activity feed.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Calendar & Taskmaster
+
+A full Week/Month calendar renders every task as a bar across its due date(s); multi-day tasks draw one continuous bar, and a task that runs from a weekday into the weekend tapers into a slim connector rather than disconnecting. Each day shows as many task pills as actually fit its row — the count adjusts live as you resize the window, with the rest collapsing into a "+N more" chip. Flip on **Taskmaster** to create tasks directly on the grid: click a day, or drag across days for a multi-day task, with a live ghost preview following your cursor.
+
+![Calendar with Taskmaster](docs/screenshots/calendar.png)
+
+### Smart views
+
+**Today** and **Upcoming** list every open task due today or later, across all projects, in one flat list — no need to open each project to see what's due.
+
+### Templates
+
+Define a main task and its subtasks once as a template, then spin up new tasks from it whenever you need that same structure again.
+
+![Templates](docs/screenshots/templates.png)
+
+### Archive
+
+Archiving a project tucks it out of your active views without deleting it. The Archived screen is the same dashboard overview — stats, attention list, activity feed — scoped to just your archived projects, with a one-click Unarchive to bring one back.
+
+![Archived](docs/screenshots/archived.png)
+
+### Settings
+
+Theme (system/light/dark), a curated accent-color palette or a full saturation/hue picker with hex input, a "reduce motion" toggle, task defaults (priority, date format, default landing screen), rebindable keyboard shortcuts, and backup/restore (export or import your entire workspace as a `.json` file) plus a "Wipe all data" reset.
+
+![Settings](docs/screenshots/settings.png)
+
+![Custom color picker](docs/screenshots/color-picker.png)
+
+### Everything else
+
+- **Multi-step undo** — every project or task deletion goes onto a real history stack, not just a single "last action"; `Ctrl/Cmd+Z` walks back through consecutive deletions, and a floating Undo toast offers the most recent one.
+- **Workspaces** — switch between separate sets of projects/tasks/templates from the sidebar, with a pinned Favorites section and a mini calendar for quick date jumps.
+- **Notifications** — local reminders tied to each task's due date/time (Android, iOS, macOS, Linux, Windows).
+- Works on Android, iOS, web, and Windows/Linux/macOS desktop from a single codebase. Data is stored locally on-device (via [Hive](https://pub.dev/packages/hive)), no account or server required. On Windows, data lives under `%LocalAppData%\ProCheck` (older installs that had data in Documents are migrated automatically on first launch).
 
 ## Getting started
 
@@ -34,16 +77,16 @@ flutter test
 ```
 lib/
   models/      Hive data models (Project, Task, Subtask, TaskTemplate, TemplateSubtask)
-  data/        Hive setup/initialization
+  data/        Hive setup, backup/restore, notifications, progress history, sound effects
   providers/   Riverpod state notifiers (persist to Hive in the background)
-  screens/     Splash, home, project detail, task template editor, settings
-  widgets/     Shared UI pieces (app logo, project card, task tile, create-task sheet,
-               page transitions, pop-out removal animation, wobble checkbox)
+  screens/     Dashboard, Today/Upcoming, Calendar, Day, Projects, project detail,
+               templates, archived, settings, splash
+  widgets/     Shared UI pieces (sidebar, app logo, project card, task tile, task
+               detail editor, create-task sheet, color picker, page transitions,
+               pop-out removal animation, wobble checkbox)
 ```
 
 State management uses [Riverpod](https://riverpod.dev/); local persistence uses [Hive](https://pub.dev/packages/hive). Notifier methods update in-memory state synchronously and persist to disk in the background, so the UI never blocks on I/O.
-
-Opening a project slides its task list in from the right while the home screen sinks away and fades out behind it; the tapped project card morphs into the project's left-side vertical hero via a `Hero` animation. Tasks then expand in place within that list — no further navigation — pushing the tasks below them down to make room for the subtasks/notes view.
 
 Two reusable animation widgets back most of the app's motion: `WobbleCheckbox` (a quick squash-and-tilt bounce on toggle, shared by task and subtask checkboxes) and `PopOutRemoval` (a shrink-and-pop-out effect for deleted projects and tasks, whose layout footprint shrinks in real time so siblings resettle smoothly instead of jumping). Both respect the "reduce motion" setting.
 
