@@ -52,6 +52,21 @@ DateTime _addDays(DateTime d, int days) => DateTime(d.year, d.month, d.day + day
 
 DateTime _weekStartOf(DateTime d) => _addDays(d, -(d.weekday - 1));
 
+/// Splits a row-relative column span (0=Monday..6=Sunday, inclusive) into
+/// its weekday-column count and weekend-column count. Handles every case
+/// uniformly — including a span that starts *within* the weekend itself
+/// (e.g. a task or drag beginning directly on a Saturday, with no weekday
+/// portion at all) — rather than only the common case of a weekday run
+/// that extends into the weekend, which a plain `colStart <= 4` guard can
+/// misclassify as a weekday-only span and render at the wrong height.
+({int weekdayCols, int weekendCols}) _weekendSplit(int colStart, int colEnd) {
+  final int weekdayEnd = math.min(colEnd, 4);
+  final int weekdayCols = colStart <= 4 ? weekdayEnd - colStart + 1 : 0;
+  final int weekendStart = math.max(colStart, 5);
+  final int weekendCols = colEnd >= 5 ? colEnd - weekendStart + 1 : 0;
+  return (weekdayCols: weekdayCols, weekendCols: weekendCols);
+}
+
 enum _CalendarView { week, month }
 
 /// A full calendar — Month for an overview of everything on the books,
@@ -451,7 +466,7 @@ class _WeekRow extends StatelessWidget {
   /// The preview widget for a drag span clipped to this row, always built
   /// as a [_CalendarCrossingPill] — even for a plain, non-crossing span —
   /// so the same widget (and `State`) persists for an entire drag rather
-  /// than swapping types the instant `crossesWeekend`/`leadingTaper` flips.
+  /// than swapping types the instant the weekday/weekend split changes.
   /// [_CalendarCrossingPill] already renders a plain span identically to a
   /// bare pill (its own geometry collapses to one when there's no weekend
   /// connector to draw), so nothing looks different in that case — but
@@ -464,14 +479,12 @@ class _WeekRow extends StatelessWidget {
     ({int colStart, int colEnd, bool roundLeft, bool roundRight}) dragSpan,
     double colWidth,
   ) {
-    final crossesWeekend = dragSpan.colStart <= 4 && dragSpan.colEnd >= 5;
+    final split = _weekendSplit(dragSpan.colStart, dragSpan.colEnd);
     final leadingTaper = !dragSpan.roundLeft;
     return _CalendarCrossingPill(
       colWidth: colWidth,
-      weekdayCols: crossesWeekend
-          ? 4 - dragSpan.colStart + 1
-          : dragSpan.colEnd - dragSpan.colStart + 1,
-      weekendCols: crossesWeekend ? dragSpan.colEnd - 5 + 1 : 0,
+      weekdayCols: split.weekdayCols,
+      weekendCols: split.weekendCols,
       leadingTaper: leadingTaper,
       roundLeft: dragSpan.roundLeft,
       roundRight: dragSpan.roundRight,
@@ -819,10 +832,7 @@ class _LaneRow extends StatelessWidget {
         );
       }
       final span = placement.colEnd - placement.colStart + 1;
-      // Saturday/Sunday are always this row's last two columns (5, 6), so a
-      // placement can cross at most once: a weekday run (<=4) followed by
-      // its own weekend run — never the other way round within one row.
-      final crossesWeekend = placement.colStart <= 4 && placement.colEnd >= 5;
+      final split = _weekendSplit(placement.colStart, placement.colEnd);
       // Every row is Monday-through-Sunday, so a placement that doesn't
       // start in this row (it started in an earlier week) necessarily
       // picks up right after last row's Sunday — always a weekend hand-off,
@@ -831,8 +841,8 @@ class _LaneRow extends StatelessWidget {
       children.add(
         Expanded(
           flex: span,
-          child: crossesWeekend || leadingTaper
-              ? _buildCrossingBar(placement, crossesWeekend, leadingTaper)
+          child: split.weekendCols > 0 || leadingTaper
+              ? _buildCrossingBar(placement, split, leadingTaper)
               : Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 2,
@@ -866,19 +876,15 @@ class _LaneRow extends StatelessWidget {
   /// own contour, rather than being split into separate touching widgets.
   Widget _buildCrossingBar(
     _BarPlacement placement,
-    bool crossesWeekend,
+    ({int weekdayCols, int weekendCols}) split,
     bool leadingTaper,
   ) {
-    final weekdayCols = crossesWeekend
-        ? 4 - placement.colStart + 1
-        : placement.colEnd - placement.colStart + 1;
-    final weekendCols = crossesWeekend ? placement.colEnd - 5 + 1 : 0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
       child: _CalendarCrossingPill(
         colWidth: colWidth,
-        weekdayCols: weekdayCols,
-        weekendCols: weekendCols,
+        weekdayCols: split.weekdayCols,
+        weekendCols: split.weekendCols,
         leadingTaper: leadingTaper,
         roundLeft: placement.isRangeStart,
         roundRight: placement.isRangeEnd,
@@ -1367,6 +1373,24 @@ class _CrossingPillBorder extends OutlinedBorder {
     final fullBottom = fullTop + weekdayHeight;
     final thinTop = rect.top + (rect.height - weekendHeight) / 2;
     final thinBottom = thinTop + weekendHeight;
+    final thinCapR = _capRadius(true);
+
+    // A span entirely within the weekend (e.g. a task or drag that starts
+    // directly on a Saturday) has no weekday portion to provide a pill for
+    // either end to be capped by, so it's just the thin shape by itself,
+    // capped the same way the weekday pill normally would be at a true end.
+    if (weekdayCols <= 0) {
+      return Path()
+        ..addRRect(
+          RRect.fromRectAndCorners(
+            Rect.fromLTRB(rect.left, thinTop, rect.right, thinBottom),
+            topLeft: roundLeft ? Radius.circular(thinCapR) : Radius.zero,
+            bottomLeft: roundLeft ? Radius.circular(thinCapR) : Radius.zero,
+            topRight: roundRight ? Radius.circular(thinCapR) : Radius.zero,
+            bottomRight: roundRight ? Radius.circular(thinCapR) : Radius.zero,
+          ),
+        );
+    }
 
     // The weekday/weekend boundary's absolute position, independent of the
     // box's own current width (see the class doc). While a drag shrinks
@@ -1388,7 +1412,6 @@ class _CrossingPillBorder extends OutlinedBorder {
     final neckMid = weekdayBoundary;
 
     final fullCapR = _capRadius(false);
-    final thinCapR = _capRadius(true);
     // How far a thin connector reaches back past the weekday/weekend
     // boundary into the pill's own rounded cap, so the union shows no seam
     // at the cap's tangent point — the thin bar should read as emerging
