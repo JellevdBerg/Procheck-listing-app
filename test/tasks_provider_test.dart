@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +8,25 @@ import 'package:procheck/data/hive_setup.dart';
 import 'package:procheck/providers/tasks_provider.dart';
 
 void main() {
+  // TasksNotifier.toggleTask plays a checkoff chime via SoundService, whose
+  // AudioPlayer construction reaches for a platform channel. With no real
+  // platform implementation registered under this plain test() (not
+  // testWidgets()) binding, the audioplayers package's own global-scope
+  // init runs as a detached, un-awaitable Future internally — its
+  // MissingPluginException surfaces as a late Zone error that
+  // SoundService's own try/catch never gets a chance to see, rather than
+  // a normal Future rejection. Mocking these two channels to resolve
+  // cleanly avoids that failure mode entirely, rather than trying to catch
+  // an error that never reaches our code.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  for (final channel in [
+    const MethodChannel('xyz.luan/audioplayers.global'),
+    const MethodChannel('xyz.luan/audioplayers'),
+  ]) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async => null);
+  }
+
   late Directory tempDir;
 
   setUpAll(() async {

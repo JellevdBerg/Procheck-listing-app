@@ -86,6 +86,14 @@ class NotificationService {
   /// test binding, which never calls it): there's no platform channel to
   /// call into yet, and tasks are created/toggled/deleted constantly in
   /// tests without ever touching real notifications.
+  ///
+  /// The actual plugin call is wrapped in a try/catch for the same reason
+  /// [initialize] swallows its own failures: `_initialized` only means
+  /// setup didn't throw, not that every platform actually implements
+  /// scheduling (e.g. the web target has no local-notifications backend at
+  /// all) — callers use `unawaited(...)`, so an uncaught throw here would
+  /// otherwise surface as an unhandled async error for what's meant to be
+  /// a best-effort reminder.
   Future<void> scheduleForTask(Task task) async {
     if (!_initialized) return;
     await cancelForTask(task);
@@ -96,36 +104,48 @@ class NotificationService {
     final scheduled = tz.TZDateTime.from(dueDate, tz.local);
     if (scheduled.isBefore(tz.TZDateTime.now(tz.local))) return;
 
-    await _plugin.zonedSchedule(
-      id: _notificationId(task.id),
-      title: task.title,
-      body: 'This task is due now.',
-      scheduledDate: scheduled,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'task_due_dates',
-          'Task due dates',
-          channelDescription: 'Reminders for tasks with a due date',
+    try {
+      await _plugin.zonedSchedule(
+        id: _notificationId(task.id),
+        title: task.title,
+        body: 'This task is due now.',
+        scheduledDate: scheduled,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'task_due_dates',
+            'Task due dates',
+            channelDescription: 'Reminders for tasks with a due date',
+          ),
+          iOS: DarwinNotificationDetails(),
+          macOS: DarwinNotificationDetails(),
+          linux: LinuxNotificationDetails(),
+          windows: WindowsNotificationDetails(),
         ),
-        iOS: DarwinNotificationDetails(),
-        macOS: DarwinNotificationDetails(),
-        linux: LinuxNotificationDetails(),
-        windows: WindowsNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } catch (_) {
+      // See the doc comment above — scheduling is best-effort.
+    }
   }
 
   Future<void> cancelForTask(Task task) async {
     if (!_initialized) return;
-    await _plugin.cancel(id: _notificationId(task.id));
+    try {
+      await _plugin.cancel(id: _notificationId(task.id));
+    } catch (_) {
+      // See scheduleForTask's doc comment — best-effort.
+    }
   }
 
   /// Cancels every pending due-date reminder. Used by Settings > Wipe All
   /// Data and when replacing the whole store on backup restore.
   Future<void> cancelAll() async {
     if (!_initialized) return;
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {
+      // See scheduleForTask's doc comment — best-effort.
+    }
   }
 
   /// Notification ids are ints, but a task's Hive id is a UUID string —

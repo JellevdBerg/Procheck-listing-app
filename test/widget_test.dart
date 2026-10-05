@@ -63,11 +63,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // Task creation is a two-step sheet: name/template/project, then
+  // "Continue" into the full detail editor (priority/due/subtasks/notes),
+  // closed with "Done" — see create_task_sheet.dart. Neither step's button
+  // is labeled "Create".
   Future<void> createTask(WidgetTester tester, String name) async {
     await tester.tap(find.text('New task'));
     await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
-    await tester.tap(find.text('Create'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
   }
 
@@ -77,7 +83,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(dialogTextField(), name);
-    await tester.tap(find.text('Create'));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
   }
 
