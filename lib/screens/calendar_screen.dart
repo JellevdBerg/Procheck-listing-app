@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -463,6 +464,24 @@ class _WeekRow extends StatelessWidget {
           .length,
     );
     final dragSpan = _dragSpanForRow();
+    // The preview must never sit on top of a real task pill, so it claims
+    // the first lane that isn't already occupied across its own column
+    // span — exactly the same rule real tasks use to find a lane, just
+    // evaluated against the already-placed real tasks only (the ghost
+    // itself never perturbs their lanes).
+    int? ghostLane;
+    if (dragSpan != null) {
+      ghostLane = lanes.length;
+      for (var i = 0; i < lanes.length; i++) {
+        final occupied = lanes[i].any(
+          (p) => dragSpan.colStart <= p.colEnd && dragSpan.colEnd >= p.colStart,
+        );
+        if (!occupied) {
+          ghostLane = i;
+          break;
+        }
+      }
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -567,13 +586,24 @@ class _WeekRow extends StatelessWidget {
                   width:
                       (dragSpan.colEnd - dragSpan.colStart + 1) * colWidth -
                       4,
-                  top: 35,
+                  // Lane 0 sits just under the day-number row (35px down);
+                  // each lane below it adds its own 27px bar plus the 3px
+                  // gap the real lanes are spaced by, so the preview lines
+                  // up with whichever lane it actually claimed above.
+                  top: 35 + (ghostLane ?? 0) * 30,
                   height: 27,
                   child: IgnorePointer(
-                    child: _DragGhostBar(
-                      roundLeft: dragSpan.roundLeft,
-                      roundRight: dragSpan.roundRight,
-                    ),
+                    child: dragSpan.colStart <= 4 && dragSpan.colEnd >= 5
+                        ? _CalendarCrossingPill(
+                            weekdayCols: 4 - dragSpan.colStart + 1,
+                            weekendCols: dragSpan.colEnd - 5 + 1,
+                            roundLeft: dragSpan.roundLeft,
+                            roundRight: dragSpan.roundRight,
+                          )
+                        : _DragGhostBar(
+                            roundLeft: dragSpan.roundLeft,
+                            roundRight: dragSpan.roundRight,
+                          ),
                   ),
                 ),
             ],
@@ -801,50 +831,27 @@ class _LaneRow extends StatelessWidget {
     return Row(children: children);
   }
 
-  /// Splits a placement that runs from a weekday into its own weekend into
-  /// two touching segments — a normal pill for the weekday run and a slim
-  /// connector for the weekend run — so the bar visually continues through
-  /// the weekend rather than reading as a separate, disconnected task.
+  /// A placement that runs from a weekday into its own weekend renders as
+  /// one continuous [_CalendarCrossingPill] — its shape tapers from the
+  /// normal pill height down to a slim weekend connector through its own
+  /// contour, rather than being split into two touching widgets.
   Widget _buildCrossingBar(_BarPlacement placement) {
-    final weekdaySpan = 4 - placement.colStart + 1;
-    final weekendSpan = placement.colEnd - 5 + 1;
-    final project = projectsById[placement.task.projectId];
-    return Row(
-      children: [
-        Expanded(
-          flex: weekdaySpan,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 2, top: 1, bottom: 1),
-            child: _TaskBar(
-              placement: placement,
-              today: today,
-              project: project,
-              onTap: (ctx) => onTaskTap(placement.task, ctx),
-              taskmasterOn: taskmasterOn,
-              onDelete: () => onTaskDelete(placement.task),
-              roundLeft: placement.isRangeStart,
-              roundRight: false,
-            ),
-          ),
-        ),
-        Expanded(
-          flex: weekendSpan,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 2, top: 1, bottom: 1),
-            child: _TaskBar(
-              placement: placement,
-              today: today,
-              project: project,
-              onTap: (ctx) => onTaskTap(placement.task, ctx),
-              taskmasterOn: taskmasterOn,
-              onDelete: () => onTaskDelete(placement.task),
-              roundLeft: false,
-              roundRight: placement.isRangeEnd,
-              weekend: true,
-            ),
-          ),
-        ),
-      ],
+    final weekdayCols = 4 - placement.colStart + 1;
+    final weekendCols = placement.colEnd - 5 + 1;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      child: _CalendarCrossingPill(
+        weekdayCols: weekdayCols,
+        weekendCols: weekendCols,
+        roundLeft: placement.isRangeStart,
+        roundRight: placement.isRangeEnd,
+        task: placement.task,
+        project: projectsById[placement.task.projectId],
+        today: today,
+        onTap: (ctx) => onTaskTap(placement.task, ctx),
+        taskmasterOn: taskmasterOn,
+        onDelete: () => onTaskDelete(placement.task),
+      ),
     );
   }
 }
@@ -1020,7 +1027,6 @@ class _TaskBar extends StatefulWidget {
     required this.onDelete,
     required this.roundLeft,
     required this.roundRight,
-    this.weekend = false,
   });
 
   final _BarPlacement placement;
@@ -1030,17 +1036,11 @@ class _TaskBar extends StatefulWidget {
   final bool taskmasterOn;
   final VoidCallback onDelete;
 
-  /// Whether this segment's left/right edge gets the pill's rounded cap —
-  /// false at a seam where the bar continues into an adjoining segment
-  /// (its own weekend run, in the same row) rather than truly starting or
-  /// ending there.
+  /// Whether this bar's left/right edge gets the pill's rounded cap — false
+  /// at a row's edge where the task actually continues into the next or
+  /// previous week, rather than truly starting or ending there.
   final bool roundLeft;
   final bool roundRight;
-
-  /// Renders as a slim, text-free connector instead of the normal pill —
-  /// the Saturday/Sunday portion of a bar that continues through the
-  /// weekend from a weekday run earlier in the same row.
-  final bool weekend;
 
   @override
   State<_TaskBar> createState() => _TaskBarState();
@@ -1051,149 +1051,176 @@ class _TaskBarState extends State<_TaskBar> {
 
   @override
   Widget build(BuildContext context) {
-    final placement = widget.placement;
-    final project = widget.project;
-    final tokens = context.nocturne;
-    final accent = context.nocturneAccent;
-    final task = placement.task;
-
-    final overallEnd = task.dueDateEnd ?? task.dueDate!;
-    final isOverdue = !task.isChecked &&
-        _dateOnly(overallEnd).isBefore(_dateOnly(widget.today));
-
-    // Matches the app's own buttons (see NocturneButton's primary variant):
-    // a tinted, outlined pill rather than a flat color swatch — just with
-    // the status color swapped in for the usual accent.
-    final statusColor = task.isChecked
-        ? tokens.neutral500
-        : (isOverdue ? NocturnePriority.high : accent);
-    // Blended onto the opaque surface color (rather than left translucent)
-    // so the grid lines and shading behind a bar never show through it.
-    final bg = Color.alphaBlend(statusColor.withValues(alpha: 0.12), tokens.surface);
-    final fg = statusColor;
-    final border = statusColor.withValues(alpha: 0.6);
-
-    final priorityColor = switch (task.priority) {
-      TaskPriority.high => NocturnePriority.high,
-      TaskPriority.med => NocturnePriority.med,
-      TaskPriority.low => NocturnePriority.low,
-      TaskPriority.none => null,
-    };
-    final originColor =
-        project != null ? accentPalette[project.colorIndex] : tokens.neutral500;
-    final originLabel = project != null ? project.name : 'Unfiled';
+    final task = widget.placement.task;
+    final style = _resolveTaskBarStyle(context, task, widget.project, widget.today);
 
     final radius = BorderRadius.horizontal(
       left: widget.roundLeft ? const Radius.circular(13) : Radius.zero,
       right: widget.roundRight ? const Radius.circular(13) : Radius.zero,
     );
 
-    if (widget.weekend) {
-      // A minimal connector rather than the full pill: just enough to read
-      // as "this task keeps going" through the weekend, without trying to
-      // cram the full label into two narrow columns. No Center/Align here
-      // — the surrounding Padding already hands this tight width (the
-      // column's full width), and the lane Row centers it vertically
-      // against the full-height weekday segment beside it.
-      return SizedBox(
-        height: 8,
-        child: Material(
-          color: bg,
-          shape: RoundedRectangleBorder(
-            borderRadius: radius,
-            side: BorderSide(color: border),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(onTap: () => widget.onTap(context)),
-        ),
-      );
-    }
-
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: SizedBox(
-      height: 27,
-      child: Material(
-        color: bg,
-        shape: RoundedRectangleBorder(
-          borderRadius: radius,
-          side: BorderSide(color: border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => widget.onTap(context),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            child: Row(
-              children: [
-                if (isOverdue) ...[
-                  const Text(
-                    '!',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFFFF3B30),
-                      height: 1,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                if (priorityColor != null) ...[
-                  Icon(Icons.flag, size: 12, color: priorityColor),
-                  const SizedBox(width: 4),
-                ],
-                Icon(Icons.folder, size: 13, color: originColor),
-                const SizedBox(width: 4),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    originLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: originColor,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 7),
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    task.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: fg,
-                      decoration:
-                          task.isChecked ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                ),
-                if (task.hasSubtasks) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.checklist,
-                    size: 13,
-                    color: fg.withValues(alpha: 0.85),
-                  ),
-                ],
-                if (widget.taskmasterOn && _hovering) ...[
-                  const SizedBox(width: 4),
-                  _DeleteDot(onTap: widget.onDelete),
-                ],
-              ],
+        height: 27,
+        child: Material(
+          color: style.bg,
+          shape: RoundedRectangleBorder(
+            borderRadius: radius,
+            side: BorderSide(color: style.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => widget.onTap(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              child: _taskBarContentRow(
+                style: style,
+                task: task,
+                taskmasterOn: widget.taskmasterOn,
+                hovering: _hovering,
+                onDelete: widget.onDelete,
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
+}
+
+/// The resolved colors/labels a task's bar renders with, shared by
+/// [_TaskBar] and [_CalendarCrossingPill] so a weekend-crossing pill looks
+/// exactly like its non-crossing counterpart would for the same task.
+class _TaskBarStyle {
+  const _TaskBarStyle({
+    required this.bg,
+    required this.fg,
+    required this.border,
+    required this.originColor,
+    required this.originLabel,
+    required this.priorityColor,
+    required this.isOverdue,
+  });
+
+  final Color bg;
+  final Color fg;
+  final Color border;
+  final Color originColor;
+  final String originLabel;
+  final Color? priorityColor;
+  final bool isOverdue;
+}
+
+_TaskBarStyle _resolveTaskBarStyle(
+  BuildContext context,
+  Task task,
+  Project? project,
+  DateTime today,
+) {
+  final tokens = context.nocturne;
+  final accent = context.nocturneAccent;
+
+  final overallEnd = task.dueDateEnd ?? task.dueDate!;
+  final isOverdue =
+      !task.isChecked && _dateOnly(overallEnd).isBefore(_dateOnly(today));
+
+  // Matches the app's own buttons (see NocturneButton's primary variant): a
+  // tinted, outlined pill rather than a flat color swatch — just with the
+  // status color swapped in for the usual accent.
+  final statusColor = task.isChecked
+      ? tokens.neutral500
+      : (isOverdue ? NocturnePriority.high : accent);
+  // Blended onto the opaque surface color (rather than left translucent) so
+  // the grid lines and shading behind a bar never show through it.
+  final bg = Color.alphaBlend(statusColor.withValues(alpha: 0.12), tokens.surface);
+  final originColor =
+      project != null ? accentPalette[project.colorIndex] : tokens.neutral500;
+
+  return _TaskBarStyle(
+    bg: bg,
+    fg: statusColor,
+    border: statusColor.withValues(alpha: 0.6),
+    originColor: originColor,
+    originLabel: project != null ? project.name : 'Unfiled',
+    priorityColor: switch (task.priority) {
+      TaskPriority.high => NocturnePriority.high,
+      TaskPriority.med => NocturnePriority.med,
+      TaskPriority.low => NocturnePriority.low,
+      TaskPriority.none => null,
+    },
+    isOverdue: isOverdue,
+  );
+}
+
+/// The icon/text row shown inside a task's bar — identical whether that bar
+/// is a plain [_TaskBar] or the weekday portion of a [_CalendarCrossingPill].
+Widget _taskBarContentRow({
+  required _TaskBarStyle style,
+  required Task task,
+  required bool taskmasterOn,
+  required bool hovering,
+  required VoidCallback onDelete,
+}) {
+  return Row(
+    children: [
+      if (style.isOverdue) ...[
+        const Text(
+          '!',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFFFF3B30),
+            height: 1,
+          ),
+        ),
+        const SizedBox(width: 4),
+      ],
+      if (style.priorityColor != null) ...[
+        Icon(Icons.flag, size: 12, color: style.priorityColor),
+        const SizedBox(width: 4),
+      ],
+      Icon(Icons.folder, size: 13, color: style.originColor),
+      const SizedBox(width: 4),
+      Expanded(
+        flex: 2,
+        child: Text(
+          style.originLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: style.originColor,
+          ),
+        ),
+      ),
+      const SizedBox(width: 7),
+      Expanded(
+        flex: 3,
+        child: Text(
+          task.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: style.fg,
+            decoration: task.isChecked ? TextDecoration.lineThrough : null,
+          ),
+        ),
+      ),
+      if (task.hasSubtasks) ...[
+        const SizedBox(width: 4),
+        Icon(Icons.checklist, size: 13, color: style.fg.withValues(alpha: 0.85)),
+      ],
+      if (taskmasterOn && hovering) ...[
+        const SizedBox(width: 4),
+        _DeleteDot(onTap: onDelete),
+      ],
+    ],
+  );
 }
 
 /// The small "x" that appears at a bar's trailing edge, in Taskmaster
@@ -1218,6 +1245,253 @@ class _DeleteDot extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The outline of a task bar that runs from a weekday into its own weekend:
+/// a full-height capsule on the weekday side that necks down, through a
+/// smooth S-curve in its own contour, into a slim capsule on the weekend
+/// side — one continuous [Path], so there's no seam where the two portions
+/// meet. [weekdayFraction] is how much of the shape's total width the
+/// weekday portion occupies (its column count over the combined span).
+class _CrossingPillBorder extends OutlinedBorder {
+  const _CrossingPillBorder({
+    required this.weekdayFraction,
+    required this.weekdayHeight,
+    required this.weekendHeight,
+    required this.roundLeft,
+    required this.roundRight,
+    super.side = BorderSide.none,
+  });
+
+  final double weekdayFraction;
+  final double weekdayHeight;
+  final double weekendHeight;
+  final bool roundLeft;
+  final bool roundRight;
+
+  @override
+  _CrossingPillBorder copyWith({BorderSide? side}) => _CrossingPillBorder(
+    weekdayFraction: weekdayFraction,
+    weekdayHeight: weekdayHeight,
+    weekendHeight: weekendHeight,
+    roundLeft: roundLeft,
+    roundRight: roundRight,
+    side: side ?? this.side,
+  );
+
+  Path _buildPath(Rect rect) {
+    final weekdayTop = rect.top + (rect.height - weekdayHeight) / 2;
+    final weekdayBottom = weekdayTop + weekdayHeight;
+    final weekendTop = rect.top + (rect.height - weekendHeight) / 2;
+    final weekendBottom = weekendTop + weekendHeight;
+    final weekdayW = rect.width * weekdayFraction;
+    final weekendW = rect.width - weekdayW;
+    final taper = [14.0, weekdayW * 0.5, weekendW * 0.5].reduce(math.min);
+    final leftCap = math.min(13.0, weekdayHeight / 2);
+    final rightCap = math.min(13.0, weekendHeight / 2);
+    final x0 = rect.left;
+    final xNeck = rect.left + weekdayW;
+    final x1 = rect.right;
+
+    final path = Path();
+    if (roundLeft) {
+      path.moveTo(x0, weekdayTop + leftCap);
+      path.arcToPoint(Offset(x0 + leftCap, weekdayTop), radius: Radius.circular(leftCap));
+    } else {
+      path.moveTo(x0, weekdayTop);
+    }
+    path.lineTo(xNeck - taper, weekdayTop);
+    path.cubicTo(
+      xNeck - taper * 0.25,
+      weekdayTop,
+      xNeck + taper * 0.25,
+      weekendTop,
+      xNeck + taper,
+      weekendTop,
+    );
+    if (roundRight) {
+      path.lineTo(x1 - rightCap, weekendTop);
+      path.arcToPoint(Offset(x1, weekendTop + rightCap), radius: Radius.circular(rightCap));
+      path.lineTo(x1, weekendBottom - rightCap);
+      path.arcToPoint(Offset(x1 - rightCap, weekendBottom), radius: Radius.circular(rightCap));
+    } else {
+      path.lineTo(x1, weekendTop);
+      path.lineTo(x1, weekendBottom);
+    }
+    path.lineTo(xNeck + taper, weekendBottom);
+    path.cubicTo(
+      xNeck + taper * 0.25,
+      weekendBottom,
+      xNeck - taper * 0.25,
+      weekdayBottom,
+      xNeck - taper,
+      weekdayBottom,
+    );
+    if (roundLeft) {
+      path.lineTo(x0 + leftCap, weekdayBottom);
+      path.arcToPoint(Offset(x0, weekdayBottom - leftCap), radius: Radius.circular(leftCap));
+    } else {
+      path.lineTo(x0, weekdayBottom);
+    }
+    path.close();
+    return path;
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) => _buildPath(rect);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      _buildPath(rect.deflate(side.width));
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.width);
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none) return;
+    canvas.drawPath(_buildPath(rect), side.toPaint());
+  }
+
+  @override
+  ShapeBorder scale(double t) => this;
+}
+
+/// A task bar that spans from a weekday run into its own Saturday/Sunday,
+/// rendered as one continuous [_CrossingPillBorder] shape instead of two
+/// separate pills — so it reads as a single task continuing through the
+/// weekend, not a disconnected block. Also used (with [task] left null) as
+/// the Taskmaster drag preview whenever the selected range itself crosses
+/// a weekend, so the live preview already shows the same taper the
+/// finished task will have.
+class _CalendarCrossingPill extends StatefulWidget {
+  const _CalendarCrossingPill({
+    required this.weekdayCols,
+    required this.weekendCols,
+    required this.roundLeft,
+    required this.roundRight,
+    this.task,
+    this.project,
+    this.today,
+    this.onTap,
+    this.taskmasterOn = false,
+    this.onDelete,
+  });
+
+  final int weekdayCols;
+  final int weekendCols;
+  final bool roundLeft;
+  final bool roundRight;
+
+  /// Null means this is a drag-preview ghost, not a real task.
+  final Task? task;
+  final Project? project;
+  final DateTime? today;
+  final void Function(BuildContext rowContext)? onTap;
+  final bool taskmasterOn;
+  final VoidCallback? onDelete;
+
+  bool get isGhost => task == null;
+
+  @override
+  State<_CalendarCrossingPill> createState() => _CalendarCrossingPillState();
+}
+
+class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
+  bool _hovering = false;
+
+  static const _weekdayHeight = 27.0;
+  static const _weekendHeight = 8.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final accent = context.nocturneAccent;
+    final totalCols = widget.weekdayCols + widget.weekendCols;
+
+    final Color bg;
+    final Color border;
+    final double sideWidth;
+    final Widget content;
+    if (widget.isGhost) {
+      bg = Color.alphaBlend(accent.withValues(alpha: 0.18), tokens.surface);
+      border = accent.withValues(alpha: 0.8);
+      sideWidth = 1.4;
+      content = Row(
+        children: [
+          Icon(Icons.add, size: 13, color: accent),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              'New task',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: accent),
+            ),
+          ),
+        ],
+      );
+    } else {
+      final style = _resolveTaskBarStyle(context, widget.task!, widget.project, widget.today!);
+      bg = style.bg;
+      border = style.border;
+      sideWidth = 1;
+      content = _taskBarContentRow(
+        style: style,
+        task: widget.task!,
+        taskmasterOn: widget.taskmasterOn,
+        hovering: _hovering,
+        onDelete: widget.onDelete ?? () {},
+      );
+    }
+
+    final shape = _CrossingPillBorder(
+      weekdayFraction: widget.weekdayCols / totalCols,
+      weekdayHeight: _weekdayHeight,
+      weekendHeight: _weekendHeight,
+      roundLeft: widget.roundLeft,
+      roundRight: widget.roundRight,
+      side: BorderSide(color: border, width: sideWidth),
+    );
+
+    Widget pill = SizedBox(
+      height: _weekdayHeight,
+      child: Material(
+        color: bg,
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.isGhost ? null : () => widget.onTap?.call(context),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final weekdayWidth = constraints.maxWidth * widget.weekdayCols / totalCols;
+              // Content lives only in the weekday portion — the weekend
+              // neck is too narrow to hold a label, same as before.
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: weekdayWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 9),
+                    child: content,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (!widget.isGhost) {
+      pill = MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: pill,
+      );
+    }
+    return pill;
   }
 }
 
