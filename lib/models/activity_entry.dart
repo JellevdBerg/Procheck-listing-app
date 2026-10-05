@@ -41,6 +41,16 @@ class ActivityEntry extends HiveObject {
 
   ActivityKind get kind => ActivityKind.fromIndex(kindIndex);
 
+  @override
+  bool operator ==(Object other) =>
+      other is ActivityEntry &&
+      other.kindIndex == kindIndex &&
+      other.description == description &&
+      other.timestamp == timestamp;
+
+  @override
+  int get hashCode => Object.hash(kindIndex, description, timestamp);
+
   Map<String, dynamic> toJson() => {
     'kindIndex': kindIndex,
     'description': description,

@@ -24,6 +24,17 @@ class ProjectComment extends HiveObject {
   @HiveField(3)
   DateTime timestamp;
 
+  @override
+  bool operator ==(Object other) =>
+      other is ProjectComment &&
+      other.id == id &&
+      other.author == author &&
+      other.text == text &&
+      other.timestamp == timestamp;
+
+  @override
+  int get hashCode => Object.hash(id, author, text, timestamp);
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'author': author,

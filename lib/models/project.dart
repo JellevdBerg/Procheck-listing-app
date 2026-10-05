@@ -1,9 +1,15 @@
+import 'package:collection/collection.dart';
 import 'package:hive/hive.dart';
 
 import 'activity_entry.dart';
 import 'project_comment.dart';
 
 part 'project.g.dart';
+
+/// Distinguishes "leave this field as-is" from "set it to null" in
+/// [Project.copyWith], since a bare `= null` default can't tell the two
+/// apart.
+const _unset = Object();
 
 @HiveType(typeId: 2)
 class Project extends HiveObject {
@@ -66,6 +72,69 @@ class Project extends HiveObject {
   /// startup (see ProjectsNotifier).
   @HiveField(9)
   String? workspaceId;
+
+  /// Builds a new [Project] with the given fields replaced — used instead
+  /// of mutating this instance's fields so that value-equality-based
+  /// Riverpod selectors (see [operator ==]) can tell an edited project
+  /// apart from the unedited one still referenced by whatever watched it
+  /// before the edit. Pass `null` explicitly for [lastOpenedAt]/
+  /// [workspaceId] to clear them; omit to leave them as-is.
+  Project copyWith({
+    String? name,
+    Object? lastOpenedAt = _unset,
+    int? colorIndex,
+    bool? archived,
+    bool? favorite,
+    List<ActivityEntry>? activityLog,
+    List<ProjectComment>? comments,
+    Object? workspaceId = _unset,
+  }) => Project(
+    id: id,
+    name: name ?? this.name,
+    createdAt: createdAt,
+    lastOpenedAt: identical(lastOpenedAt, _unset)
+        ? this.lastOpenedAt
+        : lastOpenedAt as DateTime?,
+    colorIndex: colorIndex ?? this.colorIndex,
+    archived: archived ?? this.archived,
+    favorite: favorite ?? this.favorite,
+    activityLog: activityLog ?? [...this.activityLog],
+    comments: comments ?? [...this.comments],
+    workspaceId: identical(workspaceId, _unset)
+        ? this.workspaceId
+        : workspaceId as String?,
+  );
+
+  static const _activityLogEquality = ListEquality<ActivityEntry>();
+  static const _commentsEquality = ListEquality<ProjectComment>();
+
+  @override
+  bool operator ==(Object other) =>
+      other is Project &&
+      other.id == id &&
+      other.name == name &&
+      other.createdAt == createdAt &&
+      other.lastOpenedAt == lastOpenedAt &&
+      other.colorIndex == colorIndex &&
+      other.archived == archived &&
+      other.favorite == favorite &&
+      other.workspaceId == workspaceId &&
+      _activityLogEquality.equals(other.activityLog, activityLog) &&
+      _commentsEquality.equals(other.comments, comments);
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    createdAt,
+    lastOpenedAt,
+    colorIndex,
+    archived,
+    favorite,
+    workspaceId,
+    _activityLogEquality.hash(activityLog),
+    _commentsEquality.hash(comments),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,

@@ -104,8 +104,15 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     ];
   }
 
+  /// Persists [task] — a freshly built [Task.copyWith] instance, never the
+  /// same object already in [state] — and swaps it into [state] in place.
+  /// Building a new instance rather than mutating the existing one in the
+  /// box is what lets value-equality-based selectors (see [Task.operator
+  /// ==]) detect the edit: mutating the box's cached instance in place
+  /// would mean the "old" and "new" values a selector compares are the
+  /// very same object, always equal regardless of what changed.
   void _persist(Task task) {
-    unawaited(task.save());
+    unawaited(_box.put(task.id, task));
     _replace(task);
   }
 
@@ -181,16 +188,19 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   void renameTask(String taskId, String title) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.title = title;
-    _persist(task);
-    _logActivity(task, ActivityKind.taskEdited, 'You edited "${task.title}"');
+    final updated = task.copyWith(title: title);
+    _persist(updated);
+    _logActivity(
+      updated,
+      ActivityKind.taskEdited,
+      'You edited "${updated.title}"',
+    );
   }
 
   void moveToProject(String taskId, String? projectId) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.projectId = projectId;
-    _persist(task);
+    _persist(task.copyWith(projectId: projectId));
   }
 
   void deleteTask(String taskId) {
@@ -227,16 +237,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   /// without disturbing that task's position relative to others like it.
   void reorderTasks(List<String> orderedIds) {
     final n = orderedIds.length;
-    var changed = false;
+    final updatedById = <String, Task>{};
     for (var i = 0; i < n; i++) {
       final task = _box.get(orderedIds[i]);
       if (task == null) continue;
-      task.sortOrder = (n - i).toDouble();
-      unawaited(task.save());
-      changed = true;
+      final updated = task.copyWith(sortOrder: (n - i).toDouble());
+      unawaited(_box.put(updated.id, updated));
+      updatedById[updated.id] = updated;
     }
-    if (!changed) return;
-    state = [...state];
+    if (updatedById.isEmpty) return;
+    state = [for (final t in state) updatedById[t.id] ?? t];
     _sortState();
   }
 
@@ -247,18 +257,21 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     final task = _box.get(taskId);
     if (task == null) return;
     final newValue = !task.isChecked;
-    task.isChecked = newValue;
-    for (final subtask in task.subtasks) {
-      subtask.isChecked = newValue;
-    }
-    _persist(task);
-    _syncNotificationForCompletionChange(task);
+    final updated = task.copyWith(
+      isChecked: newValue,
+      subtasks: [
+        for (final subtask in task.subtasks)
+          subtask.copyWith(isChecked: newValue),
+      ],
+    );
+    _persist(updated);
+    _syncNotificationForCompletionChange(updated);
     if (newValue) {
       unawaited(SoundService.instance.playCheckoff());
       _logActivity(
-        task,
+        updated,
         ActivityKind.taskCompleted,
-        'You completed "${task.title}"',
+        'You completed "${updated.title}"',
       );
     }
   }
@@ -267,16 +280,19 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     final task = _box.get(taskId);
     if (task == null) return;
     final wasChecked = task.isChecked;
-    for (final subtask in task.subtasks) {
-      if (subtask.id == subtaskId) {
-        subtask.isChecked = !subtask.isChecked;
-        break;
-      }
-    }
-    task.isChecked = task.subtasks.every((s) => s.isChecked);
-    _persist(task);
-    _syncNotificationForCompletionChange(task);
-    if (task.isChecked && !wasChecked) {
+    final newSubtasks = [
+      for (final subtask in task.subtasks)
+        subtask.id == subtaskId
+            ? subtask.copyWith(isChecked: !subtask.isChecked)
+            : subtask,
+    ];
+    final updated = task.copyWith(
+      subtasks: newSubtasks,
+      isChecked: newSubtasks.every((s) => s.isChecked),
+    );
+    _persist(updated);
+    _syncNotificationForCompletionChange(updated);
+    if (updated.isChecked && !wasChecked) {
       unawaited(SoundService.instance.playCheckoff());
     }
   }
@@ -296,73 +312,85 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   void setTaskNotes(String taskId, String? notes) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.notes = notes;
-    _persist(task);
+    _persist(task.copyWith(notes: notes));
   }
 
   void setTaskDueDate(String taskId, DateTime? dueDate, {DateTime? dueDateEnd}) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.dueDate = dueDate;
-    task.dueDateEnd = dueDate == null ? null : dueDateEnd;
-    _persist(task);
-    unawaited(NotificationService.instance.scheduleForTask(task));
+    final updated = task.copyWith(
+      dueDate: dueDate,
+      dueDateEnd: dueDate == null ? null : dueDateEnd,
+    );
+    _persist(updated);
+    unawaited(NotificationService.instance.scheduleForTask(updated));
   }
 
   void setTaskPriority(String taskId, TaskPriority priority) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.priority = priority;
-    _persist(task);
+    _persist(task.copyWith(priorityIndex: priority.index));
   }
 
   void addAttachments(String taskId, List<Attachment> attachments) {
     if (attachments.isEmpty) return;
     final task = _box.get(taskId);
     if (task == null) return;
-    task.attachments = [...task.attachments, ...attachments];
-    _persist(task);
+    _persist(task.copyWith(attachments: [...task.attachments, ...attachments]));
   }
 
   void removeAttachment(String taskId, int index) {
     final task = _box.get(taskId);
     if (task == null) return;
     if (index < 0 || index >= task.attachments.length) return;
-    task.attachments = [...task.attachments]..removeAt(index);
-    _persist(task);
+    _persist(
+      task.copyWith(attachments: [...task.attachments]..removeAt(index)),
+    );
   }
 
   void addSubtask(String taskId, String title) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.subtasks = [
+    final newSubtasks = [
       ...task.subtasks,
       Subtask(id: const Uuid().v4(), title: title),
     ];
     // A freshly-added, unchecked subtask means the task can no longer be
     // considered done.
-    task.isChecked = task.subtasks.every((s) => s.isChecked);
-    _persist(task);
+    _persist(
+      task.copyWith(
+        subtasks: newSubtasks,
+        isChecked: newSubtasks.every((s) => s.isChecked),
+      ),
+    );
   }
 
   void removeSubtask(String taskId, String subtaskId) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.subtasks = task.subtasks.where((s) => s.id != subtaskId).toList();
-    if (task.subtasks.isNotEmpty) {
-      task.isChecked = task.subtasks.every((s) => s.isChecked);
-    }
-    _persist(task);
+    final newSubtasks = task.subtasks.where((s) => s.id != subtaskId).toList();
+    _persist(
+      task.copyWith(
+        subtasks: newSubtasks,
+        isChecked: newSubtasks.isEmpty
+            ? task.isChecked
+            : newSubtasks.every((s) => s.isChecked),
+      ),
+    );
   }
 
   void resetProgress(String taskId) {
     final task = _box.get(taskId);
     if (task == null) return;
-    task.isChecked = false;
-    for (final subtask in task.subtasks) {
-      subtask.isChecked = false;
-    }
-    _persist(task);
+    _persist(
+      task.copyWith(
+        isChecked: false,
+        subtasks: [
+          for (final subtask in task.subtasks)
+            subtask.copyWith(isChecked: false),
+        ],
+      ),
+    );
   }
 
   /// Deletes every task that belongs to [projectId], along with their

@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:hive/hive.dart';
 
 import 'attachment.dart';
@@ -5,6 +6,10 @@ import 'subtask.dart';
 import 'task_priority.dart';
 
 part 'task.g.dart';
+
+/// Distinguishes "leave this field as-is" from "set it to null" in
+/// [Task.copyWith], since a bare `= null` default can't tell the two apart.
+const _unset = Object();
 
 @HiveType(typeId: 1)
 class Task extends HiveObject {
@@ -105,6 +110,89 @@ class Task extends HiveObject {
 
   double get subtaskProgress =>
       subtasks.isEmpty ? 0 : completedSubtaskCount / subtasks.length;
+
+  /// Builds a new [Task] with the given fields replaced — used instead of
+  /// mutating this instance's fields so that value-equality-based Riverpod
+  /// selectors (see [operator ==]) can tell an edited task apart from the
+  /// unedited one still referenced by whatever watched it before the edit.
+  /// Pass `null` explicitly for [notes]/[projectId]/[templateId]/[dueDate]/
+  /// [dueDateEnd]/[workspaceId] to clear them; omit to leave them as-is.
+  Task copyWith({
+    String? title,
+    bool? isChecked,
+    Object? notes = _unset,
+    List<Subtask>? subtasks,
+    Object? projectId = _unset,
+    Object? templateId = _unset,
+    Object? dueDate = _unset,
+    Object? dueDateEnd = _unset,
+    double? sortOrder,
+    int? priorityIndex,
+    List<Attachment>? attachments,
+    Object? workspaceId = _unset,
+  }) => Task(
+    id: id,
+    title: title ?? this.title,
+    createdAt: createdAt,
+    isChecked: isChecked ?? this.isChecked,
+    notes: identical(notes, _unset) ? this.notes : notes as String?,
+    subtasks: subtasks ?? [...this.subtasks],
+    projectId: identical(projectId, _unset)
+        ? this.projectId
+        : projectId as String?,
+    templateId: identical(templateId, _unset)
+        ? this.templateId
+        : templateId as String?,
+    dueDate: identical(dueDate, _unset) ? this.dueDate : dueDate as DateTime?,
+    dueDateEnd: identical(dueDateEnd, _unset)
+        ? this.dueDateEnd
+        : dueDateEnd as DateTime?,
+    sortOrder: sortOrder ?? this.sortOrder,
+    priorityIndex: priorityIndex ?? this.priorityIndex,
+    attachments: attachments ?? [...this.attachments],
+    workspaceId: identical(workspaceId, _unset)
+        ? this.workspaceId
+        : workspaceId as String?,
+  );
+
+  static const _subtaskListEquality = ListEquality<Subtask>();
+  static const _attachmentListEquality = ListEquality<Attachment>();
+
+  @override
+  bool operator ==(Object other) =>
+      other is Task &&
+      other.id == id &&
+      other.title == title &&
+      other.isChecked == isChecked &&
+      other.notes == notes &&
+      other.projectId == projectId &&
+      other.createdAt == createdAt &&
+      other.templateId == templateId &&
+      other.dueDate == dueDate &&
+      other.dueDateEnd == dueDateEnd &&
+      other.sortOrder == sortOrder &&
+      other.priorityIndex == priorityIndex &&
+      other.workspaceId == workspaceId &&
+      _subtaskListEquality.equals(other.subtasks, subtasks) &&
+      _attachmentListEquality.equals(other.attachments, attachments);
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    title,
+    isChecked,
+    notes,
+    projectId,
+    createdAt,
+    templateId,
+    dueDate,
+    dueDateEnd,
+    sortOrder,
+    priorityIndex,
+    workspaceId,
+    _subtaskListEquality.hash(subtasks),
+    _attachmentListEquality.hash(attachments),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
