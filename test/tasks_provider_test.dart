@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:procheck/data/hive_setup.dart';
+import 'package:procheck/models/recurrence_rule.dart';
 import 'package:procheck/providers/tasks_provider.dart';
 
 void main() {
@@ -72,6 +73,69 @@ void main() {
         .map((t) => t.id)
         .toList();
     expect(reordered, [a.id, c.id, b.id]);
+  });
+
+  test('completing a daily-recurring task spawns the next occurrence', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'Take vitamins');
+    final due = DateTime(2026, 1, 1, 9, 0);
+    notifier.setTaskDueDate(task.id, due);
+    notifier.setTaskRecurrence(task.id, RecurrenceRule.daily);
+
+    notifier.toggleTask(task.id);
+
+    final tasks = container.read(tasksProvider);
+    final completed = tasks.firstWhere((t) => t.id == task.id);
+    expect(completed.isChecked, isTrue);
+
+    final next = tasks.firstWhere(
+      (t) => t.title == 'Take vitamins' && t.id != task.id,
+    );
+    expect(next.isChecked, isFalse);
+    expect(next.dueDate, due.add(const Duration(days: 1)));
+    expect(next.recurrence, RecurrenceRule.daily);
+  });
+
+  test('completing a non-recurring task spawns nothing', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'One-off errand');
+    notifier.setTaskDueDate(task.id, DateTime.now().add(const Duration(days: 1)));
+
+    notifier.toggleTask(task.id);
+
+    expect(
+      container.read(tasksProvider).where((t) => t.title == 'One-off errand'),
+      hasLength(1),
+    );
+  });
+
+  test('un-completing a recurring task does not spawn another occurrence', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'Water the plants weekly');
+    notifier.setTaskDueDate(task.id, DateTime.now().add(const Duration(days: 1)));
+    notifier.setTaskRecurrence(task.id, RecurrenceRule.weekly);
+    const title = 'Water the plants weekly';
+
+    notifier.toggleTask(task.id); // complete -> spawns next occurrence
+    expect(
+      container.read(tasksProvider).where((t) => t.title == title),
+      hasLength(2),
+    );
+
+    notifier.toggleTask(task.id); // un-complete the original
+    expect(
+      container.read(tasksProvider).where((t) => t.title == title),
+      hasLength(2),
+    );
   });
 
   test('restoreTask brings a deleted standalone task back', () {

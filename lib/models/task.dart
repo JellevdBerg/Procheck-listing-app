@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:hive/hive.dart';
 
 import 'attachment.dart';
+import 'recurrence_rule.dart';
 import 'subtask.dart';
 import 'task_priority.dart';
 
@@ -28,6 +29,7 @@ class Task extends HiveObject {
     this.priorityIndex = 0,
     List<Attachment>? attachments,
     this.workspaceId,
+    this.recurrenceIndex = 0,
   }) : subtasks = subtasks ?? [],
        attachments = attachments ?? [],
        sortOrder = sortOrder ?? createdAt.millisecondsSinceEpoch.toDouble();
@@ -100,8 +102,20 @@ class Task extends HiveObject {
   @HiveField(12)
   String? workspaceId;
 
+  /// [RecurrenceRule.index] — stored as a plain int for the same reason as
+  /// [priorityIndex]. Only meaningful alongside [dueDate]: completing a
+  /// recurring task with no due date has no anchor to compute the next
+  /// occurrence from, so the UI only offers a recurrence once a due date is
+  /// set (see TasksNotifier.toggleTask/toggleSubtask, which spawn the next
+  /// occurrence).
+  @HiveField(14, defaultValue: 0)
+  int recurrenceIndex;
+
   TaskPriority get priority => TaskPriority.fromIndex(priorityIndex);
   set priority(TaskPriority value) => priorityIndex = value.index;
+
+  RecurrenceRule get recurrence => RecurrenceRule.fromIndex(recurrenceIndex);
+  set recurrence(RecurrenceRule value) => recurrenceIndex = value.index;
 
   bool get hasSubtasks => subtasks.isNotEmpty;
 
@@ -130,6 +144,7 @@ class Task extends HiveObject {
     int? priorityIndex,
     List<Attachment>? attachments,
     Object? workspaceId = _unset,
+    int? recurrenceIndex,
   }) => Task(
     id: id,
     title: title ?? this.title,
@@ -153,6 +168,7 @@ class Task extends HiveObject {
     workspaceId: identical(workspaceId, _unset)
         ? this.workspaceId
         : workspaceId as String?,
+    recurrenceIndex: recurrenceIndex ?? this.recurrenceIndex,
   );
 
   static const _subtaskListEquality = ListEquality<Subtask>();
@@ -173,6 +189,7 @@ class Task extends HiveObject {
       other.sortOrder == sortOrder &&
       other.priorityIndex == priorityIndex &&
       other.workspaceId == workspaceId &&
+      other.recurrenceIndex == recurrenceIndex &&
       _subtaskListEquality.equals(other.subtasks, subtasks) &&
       _attachmentListEquality.equals(other.attachments, attachments);
 
@@ -190,6 +207,7 @@ class Task extends HiveObject {
     sortOrder,
     priorityIndex,
     workspaceId,
+    recurrenceIndex,
     _subtaskListEquality.hash(subtasks),
     _attachmentListEquality.hash(attachments),
   );
@@ -209,6 +227,7 @@ class Task extends HiveObject {
     'priorityIndex': priorityIndex,
     'attachments': attachments.map((a) => a.toJson()).toList(),
     'workspaceId': workspaceId,
+    'recurrenceIndex': recurrenceIndex,
   };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -234,5 +253,6 @@ class Task extends HiveObject {
         .map((a) => Attachment.fromJson(a as Map<String, dynamic>))
         .toList(),
     workspaceId: json['workspaceId'] as String?,
+    recurrenceIndex: json['recurrenceIndex'] as int? ?? 0,
   );
 }

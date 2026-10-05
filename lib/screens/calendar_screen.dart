@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/project.dart';
+import '../models/recurrence_rule.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
@@ -1326,6 +1327,10 @@ Widget _taskBarContentRow({
       if (task.hasSubtasks) ...[
         const SizedBox(width: 4),
         Icon(Icons.checklist, size: 13, color: style.fg.withValues(alpha: 0.85)),
+      ],
+      if (task.recurrence != RecurrenceRule.none) ...[
+        const SizedBox(width: 4),
+        Icon(Icons.repeat, size: 13, color: style.fg.withValues(alpha: 0.85)),
       ],
       if (taskmasterOn && hovering) ...[
         const SizedBox(width: 4),
