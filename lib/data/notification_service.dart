@@ -96,36 +96,50 @@ class NotificationService {
     final scheduled = tz.TZDateTime.from(dueDate, tz.local);
     if (scheduled.isBefore(tz.TZDateTime.now(tz.local))) return;
 
-    await _plugin.zonedSchedule(
-      id: _notificationId(task.id),
-      title: task.title,
-      body: 'This task is due now.',
-      scheduledDate: scheduled,
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'task_due_dates',
-          'Task due dates',
-          channelDescription: 'Reminders for tasks with a due date',
+    try {
+      await _plugin.zonedSchedule(
+        id: _notificationId(task.id),
+        title: task.title,
+        body: 'This task is due now.',
+        scheduledDate: scheduled,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'task_due_dates',
+            'Task due dates',
+            channelDescription: 'Reminders for tasks with a due date',
+          ),
+          iOS: DarwinNotificationDetails(),
+          macOS: DarwinNotificationDetails(),
+          linux: LinuxNotificationDetails(),
+          windows: WindowsNotificationDetails(),
         ),
-        iOS: DarwinNotificationDetails(),
-        macOS: DarwinNotificationDetails(),
-        linux: LinuxNotificationDetails(),
-        windows: WindowsNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } catch (_) {
+      // Scheduling can fail on platforms/configurations the plugin doesn't
+      // fully support (e.g. the web target) — see the class doc comment;
+      // the due date itself is already saved regardless.
+    }
   }
 
   Future<void> cancelForTask(Task task) async {
     if (!_initialized) return;
-    await _plugin.cancel(id: _notificationId(task.id));
+    try {
+      await _plugin.cancel(id: _notificationId(task.id));
+    } catch (_) {
+      // See scheduleForTask — same no-op-on-failure contract.
+    }
   }
 
   /// Cancels every pending due-date reminder. Used by Settings > Wipe All
   /// Data and when replacing the whole store on backup restore.
   Future<void> cancelAll() async {
     if (!_initialized) return;
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (_) {
+      // See scheduleForTask — same no-op-on-failure contract.
+    }
   }
 
   /// Notification ids are ints, but a task's Hive id is a UUID string —
