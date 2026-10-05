@@ -20,6 +20,15 @@ import '../widgets/nocturne/nocturne_widgets.dart';
 /// in sync with how long the box actually takes to catch up.
 const _dragGhostAnimationDuration = Duration(milliseconds: 150);
 
+// A Month-view day row's fixed pixel geometry, shared by the lane-count-
+// that-fits math ([_maxLanesForHeight]) and the Taskmaster drag-ghost's
+// positioning (which lane it visually lands in) — one source of truth so
+// the two can never drift apart.
+const _rowTopInset = 35.0; // 6px top padding + the day-number row + 3px gap
+const _laneHeight = 30.0; // 27px bar + 3px gap below it
+const _overflowChipHeight = 20.0;
+const _rowBottomPadding = 6.0;
+
 const _monthNames = [
   'January',
   'February',
@@ -369,7 +378,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                         : widget.onDaySelected,
                                     onTaskTap: _handleTaskTap,
                                     showTopBorder: week != 0,
-                                    maxVisibleLanes: 4,
+                                    capLanesToFit: true,
                                     taskmasterOn: _taskmasterOn,
                                     onTaskDelete: onTaskDelete,
                                     dragRange: dragRange,
@@ -418,7 +427,7 @@ class _WeekRow extends StatelessWidget {
     required this.onTaskTap,
     this.dimOutOfRangeDays = true,
     this.showTopBorder = true,
-    this.maxVisibleLanes,
+    this.capLanesToFit = false,
     this.taskmasterOn = false,
     required this.onTaskDelete,
     this.dragRange,
@@ -434,10 +443,13 @@ class _WeekRow extends StatelessWidget {
   final bool dimOutOfRangeDays;
   final bool showTopBorder;
 
-  /// Caps how many lanes of bars this row draws before the rest collapse
-  /// into a per-day "+N" overflow chip — null means show every lane
-  /// (scrolling locally if they don't fit), used by the Week view.
-  final int? maxVisibleLanes;
+  /// When true (Month view), this row shows as many lanes as actually fit
+  /// its allotted height — recomputed on every resize — and collapses the
+  /// rest into a per-day "+N more" chip. False (Week view) always shows
+  /// every lane in full, scrolling locally if they don't fit, since the
+  /// single-week view has more room to spare and a count chip would be
+  /// odd there. See [_maxLanesForHeight].
+  final bool capLanesToFit;
 
   final bool taskmasterOn;
   final void Function(Task task) onTaskDelete;
@@ -502,22 +514,6 @@ class _WeekRow extends StatelessWidget {
     final tokens = context.nocturne;
     final rowEnd = _addDays(rowStart, 6);
     final lanes = _computeLanes(tasks, rowStart, rowEnd);
-
-    final cap = maxVisibleLanes;
-    final overflow = cap != null && lanes.length > cap;
-    // All [cap] lanes always show in full — the "+N more" chip is an extra
-    // row appended below them, not a slot borrowed from the cap, so a full
-    // day is always exactly [cap] real pills tall plus one chip row.
-    final visibleLanes =
-        cap != null ? lanes.sublist(0, math.min(cap, lanes.length)) : lanes;
-    final hiddenLanes =
-        overflow ? lanes.sublist(cap) : const <List<_BarPlacement>>[];
-    final overflowCounts = List<int>.generate(
-      7,
-      (day) => hiddenLanes
-          .where((lane) => lane.any((p) => p.colStart <= day && p.colEnd >= day))
-          .length,
-    );
     final dragSpan = _dragSpanForRow();
     // The preview must never sit on top of a real task pill, so it claims
     // the first lane that isn't already occupied across its own column
@@ -547,6 +543,27 @@ class _WeekRow extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final colWidth = constraints.maxWidth / 7;
+
+          // Recomputed on every resize, using this row's actual available
+          // height — see _maxLanesForHeight.
+          final cap = capLanesToFit
+              ? _maxLanesForHeight(constraints.maxHeight, lanes.length)
+              : null;
+          final overflow = cap != null && lanes.length > cap;
+          // All [cap] lanes always show in full — the "+N more" chip is an
+          // extra row appended below them, not a slot borrowed from the cap.
+          final visibleLanes = cap != null
+              ? lanes.sublist(0, math.min(cap, lanes.length))
+              : lanes;
+          final hiddenLanes =
+              overflow ? lanes.sublist(cap) : const <List<_BarPlacement>>[];
+          final overflowCounts = List<int>.generate(
+            7,
+            (day) => hiddenLanes
+                .where((lane) => lane.any((p) => p.colStart <= day && p.colEnd >= day))
+                .length,
+          );
+
           return Stack(
             children: [
               // A background+divider layer sized to the full row, independent
@@ -632,11 +649,10 @@ class _WeekRow extends StatelessWidget {
                   width:
                       (dragSpan.colEnd - dragSpan.colStart + 1) * colWidth -
                       4,
-                  // Lane 0 sits just under the day-number row (35px down);
-                  // each lane below it adds its own 27px bar plus the 3px
-                  // gap the real lanes are spaced by, so the preview lines
-                  // up with whichever lane it actually claimed above.
-                  top: 35 + (ghostLane ?? 0) * 30,
+                  // Lane 0 sits just under the day-number row; each lane
+                  // below it adds its own height, so the preview lines up
+                  // with whichever lane it actually claimed above.
+                  top: _rowTopInset + (ghostLane ?? 0) * _laneHeight,
                   height: 27,
                   child: IgnorePointer(
                     child: _buildGhost(dragSpan, colWidth),
@@ -648,6 +664,30 @@ class _WeekRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How many lanes of real task pills fit within [availableHeight] (a Month
+/// row's actual height for this layout pass), out of [totalLanes] active
+/// that week — recomputed on every resize so the visible count tracks the
+/// window instead of being fixed. Uses the exact pixel geometry the row
+/// itself lays out with (see the `_row*`/`_lane*`/`_overflowChipHeight`
+/// consts up top), so this always agrees with what actually fits on
+/// screen rather than an approximation.
+int _maxLanesForHeight(double availableHeight, int totalLanes) {
+  final fitsEverything =
+      _rowTopInset + totalLanes * _laneHeight + _rowBottomPadding <=
+      availableHeight;
+  if (fitsEverything) return totalLanes;
+
+  // Doesn't all fit — one of the slots freed up has to become the "+N
+  // more" chip instead of a lane, so this is always < totalLanes.
+  final withChip =
+      (availableHeight -
+              _rowTopInset -
+              _overflowChipHeight -
+              _rowBottomPadding) /
+      _laneHeight;
+  return withChip.floor().clamp(0, totalLanes - 1);
 }
 
 /// One day column's full-height backdrop: shades weekends and days outside
