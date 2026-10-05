@@ -193,6 +193,7 @@ ThemeData buildNocturneTheme({
     cardTheme: CardThemeData(
       color: tokens.surface,
       elevation: 0,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(NocturneRadius.md),
         side: BorderSide(color: tokens.neutral800, width: 1),

@@ -15,6 +15,7 @@ import '../providers/settings_provider.dart';
 import '../providers/task_templates_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
+import '../widgets/color_spectrum_picker.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import '../widgets/text_prompt_dialog.dart';
 
@@ -262,49 +263,6 @@ class _CustomAccentSwatch extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A minimal hex-input color picker — deliberately simple rather than
-/// pulling in a color-picker package for one dialog.
-Future<Color?> showCustomColorDialog(BuildContext context, Color initial) {
-  final controller = TextEditingController(
-    text: '#${initial.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
-  );
-  return showDialog<Color>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Custom accent color'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'Hex color',
-          hintText: '#9184D9',
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final parsed = _parseHexColor(controller.text);
-            Navigator.of(context).pop(parsed);
-          },
-          child: const Text('Use color'),
-        ),
-      ],
-    ),
-  );
-}
-
-Color? _parseHexColor(String input) {
-  var hex = input.trim().replaceFirst('#', '');
-  if (hex.length == 6) hex = 'FF$hex';
-  if (hex.length != 8) return null;
-  final value = int.tryParse(hex, radix: 16);
-  return value == null ? null : Color(value);
 }
 
 class _TaskDefaultsCard extends ConsumerWidget {

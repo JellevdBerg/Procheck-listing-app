@@ -6,6 +6,7 @@ enum AppScreen {
   projects,
   today,
   upcoming,
+  calendar,
   day,
   templates,
   archived,

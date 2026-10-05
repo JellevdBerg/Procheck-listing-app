@@ -26,6 +26,7 @@ class TaskAdapter extends TypeAdapter<Task> {
       projectId: fields[5] as String?,
       templateId: fields[7] as String?,
       dueDate: fields[8] as DateTime?,
+      dueDateEnd: fields[13] as DateTime?,
       sortOrder: fields[9] == null ? 0.0 : fields[9] as double?,
       priorityIndex: fields[10] == null ? 0 : fields[10] as int,
       attachments:
@@ -37,7 +38,7 @@ class TaskAdapter extends TypeAdapter<Task> {
   @override
   void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,6 +57,8 @@ class TaskAdapter extends TypeAdapter<Task> {
       ..write(obj.templateId)
       ..writeByte(8)
       ..write(obj.dueDate)
+      ..writeByte(13)
+      ..write(obj.dueDateEnd)
       ..writeByte(9)
       ..write(obj.sortOrder)
       ..writeByte(10)

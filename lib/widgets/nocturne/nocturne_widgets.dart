@@ -112,7 +112,8 @@ class NocturneTag extends StatelessWidget {
   final String label;
   final IconData? icon;
 
-  /// Fill/text color for a solid tag. Ignored when [outline] is true.
+  /// Fill/text color for a solid tag, or the fg/border color for an
+  /// [outline] one (which otherwise defaults to the Appearance accent).
   final Color? color;
 
   /// An outlined tag (e.g. the due-date chip) instead of a filled one.
@@ -127,9 +128,9 @@ class NocturneTag extends StatelessWidget {
     final Color? bg;
     final Color borderColor;
     if (outline) {
-      fg = accent;
+      fg = color ?? accent;
       bg = null;
-      borderColor = accent;
+      borderColor = color ?? accent;
     } else if (color != null) {
       fg = color!;
       bg = color!.withValues(alpha: 0.22);

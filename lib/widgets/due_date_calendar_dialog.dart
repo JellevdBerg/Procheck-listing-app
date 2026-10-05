@@ -1,0 +1,302 @@
+import 'package:flutter/material.dart';
+
+import '../theme/nocturne_theme.dart';
+
+const _monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+const _weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/// What [showDueDateCalendarDialog] returns: a single day ([end] null), or
+/// an inclusive day range.
+class DueDateSelection {
+  const DueDateSelection({required this.start, this.end});
+  final DateTime start;
+  final DateTime? end;
+}
+
+/// A single calendar where picking a due date and picking a due-date range
+/// are the same gesture, rather than two separate pickers: tap a day to
+/// select it; tap a second day and the range between them highlights; tap a
+/// third and the oldest of the two currently-selected days drops out, so
+/// the range always tracks the two most recently tapped days. Confirming
+/// with only one day tapped sets a single due date, same as before.
+Future<DueDateSelection?> showDueDateCalendarDialog(
+  BuildContext context, {
+  DateTime? initialStart,
+  DateTime? initialEnd,
+}) {
+  return showDialog<DueDateSelection>(
+    context: context,
+    builder: (context) => _DueDateCalendarDialog(
+      initialStart: initialStart,
+      initialEnd: initialEnd,
+    ),
+  );
+}
+
+DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+bool _isSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+class _DueDateCalendarDialog extends StatefulWidget {
+  const _DueDateCalendarDialog({this.initialStart, this.initialEnd});
+
+  final DateTime? initialStart;
+  final DateTime? initialEnd;
+
+  @override
+  State<_DueDateCalendarDialog> createState() =>
+      _DueDateCalendarDialogState();
+}
+
+class _DueDateCalendarDialogState extends State<_DueDateCalendarDialog> {
+  // Holds at most the 2 most recently tapped days, oldest first — a plain
+  // sliding window rather than a richer "start/end" model, since that's
+  // exactly the tap-tap-tap behavior this dialog implements.
+  final List<DateTime> _taps = [];
+  late DateTime _visibleMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    final start = widget.initialStart;
+    final end = widget.initialEnd;
+    if (start != null) _taps.add(_dateOnly(start));
+    if (end != null && !_isSameDay(end, start!)) _taps.add(_dateOnly(end));
+    _visibleMonth = _taps.isNotEmpty ? _taps.last : DateTime.now();
+  }
+
+  void _handleDayTap(DateTime day) {
+    setState(() {
+      if (_taps.length >= 2) _taps.removeAt(0);
+      _taps.add(day);
+    });
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final accent = context.nocturneAccent;
+    final today = DateTime.now();
+    final firstOfMonth = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final startOffset = firstOfMonth.weekday % 7;
+    final daysInMonth = DateTime(
+      _visibleMonth.year,
+      _visibleMonth.month + 1,
+      0,
+    ).day;
+
+    DateTime? rangeStart;
+    DateTime? rangeEnd;
+    if (_taps.length == 2) {
+      final sorted = [..._taps]..sort();
+      rangeStart = sorted[0];
+      rangeEnd = sorted[1];
+    }
+
+    final helperText = switch (_taps.length) {
+      0 => 'Tap a day to set a due date.',
+      1 => 'Tap another day to make it a range, or Save for just this day.',
+      _ => 'Tap a day to shift the range.',
+    };
+
+    return Dialog(
+      backgroundColor: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NocturneRadius.lg),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_monthNames[_visibleMonth.month - 1]} ${_visibleMonth.year}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: tokens.text,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _changeMonth(-1),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _changeMonth(1),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                helperText,
+                style: TextStyle(fontSize: 12, color: tokens.neutral500),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  for (final label in _weekdayLabels)
+                    Expanded(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: tokens.neutral500),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                ),
+                itemCount: startOffset + daysInMonth,
+                itemBuilder: (context, index) {
+                  if (index < startOffset) return const SizedBox.shrink();
+                  final day = index - startOffset + 1;
+                  final date = DateTime(
+                    _visibleMonth.year,
+                    _visibleMonth.month,
+                    day,
+                  );
+                  final isToday = _isSameDay(date, today);
+                  final isTapped = _taps.any((t) => _isSameDay(t, date));
+                  final inRange =
+                      rangeStart != null &&
+                      rangeEnd != null &&
+                      !date.isBefore(rangeStart) &&
+                      !date.isAfter(rangeEnd);
+
+                  final isRangeStart =
+                      rangeStart != null && _isSameDay(date, rangeStart);
+                  final isRangeEnd =
+                      rangeEnd != null && _isSameDay(date, rangeEnd);
+
+                  return InkWell(
+                    onTap: () => _handleDayTap(date),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Only the range's actual first/last day gets a
+                          // rounded cap; every other in-range cell —
+                          // including ones that happen to fall at the start
+                          // or end of a week's row — stays square, so the
+                          // highlight reads as one continuous bar.
+                          if (inRange)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: isRangeStart
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  bottomLeft: isRangeStart
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  topRight: isRangeEnd
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                  bottomRight: isRangeEnd
+                                      ? const Radius.circular(16)
+                                      : Radius.zero,
+                                ),
+                              ),
+                            ),
+                          Container(
+                            alignment: Alignment.center,
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: isTapped ? accent : null,
+                              shape: BoxShape.circle,
+                              border: (!isTapped && isToday)
+                                  ? Border.all(color: accent)
+                                  : null,
+                            ),
+                            child: Text(
+                              '$day',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isTapped
+                                    ? Colors.white
+                                    : (isToday ? accent : tokens.neutral200),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 4),
+                  if (_taps.isNotEmpty)
+                    TextButton(
+                      onPressed: () => setState(_taps.clear),
+                      child: const Text('Clear'),
+                    ),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    onPressed: _taps.isEmpty
+                        ? null
+                        : () {
+                            final sorted = [..._taps]..sort();
+                            Navigator.pop(
+                              context,
+                              DueDateSelection(
+                                start: sorted.first,
+                                end: sorted.length == 2 ? sorted.last : null,
+                              ),
+                            );
+                          },
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

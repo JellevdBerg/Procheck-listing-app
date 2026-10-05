@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/hive_setup.dart';
 import '../data/notification_service.dart';
+import '../data/sound_service.dart';
 import '../models/activity_entry.dart';
 import '../models/attachment.dart';
 import '../models/subtask.dart';
@@ -253,6 +254,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _persist(task);
     _syncNotificationForCompletionChange(task);
     if (newValue) {
+      unawaited(SoundService.instance.playCheckoff());
       _logActivity(
         task,
         ActivityKind.taskCompleted,
@@ -264,6 +266,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   void toggleSubtask(String taskId, String subtaskId) {
     final task = _box.get(taskId);
     if (task == null) return;
+    final wasChecked = task.isChecked;
     for (final subtask in task.subtasks) {
       if (subtask.id == subtaskId) {
         subtask.isChecked = !subtask.isChecked;
@@ -273,6 +276,9 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     task.isChecked = task.subtasks.every((s) => s.isChecked);
     _persist(task);
     _syncNotificationForCompletionChange(task);
+    if (task.isChecked && !wasChecked) {
+      unawaited(SoundService.instance.playCheckoff());
+    }
   }
 
   /// A completed task has nothing left to remind about, so its due-date
@@ -294,10 +300,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _persist(task);
   }
 
-  void setTaskDueDate(String taskId, DateTime? dueDate) {
+  void setTaskDueDate(String taskId, DateTime? dueDate, {DateTime? dueDateEnd}) {
     final task = _box.get(taskId);
     if (task == null) return;
     task.dueDate = dueDate;
+    task.dueDateEnd = dueDate == null ? null : dueDateEnd;
     _persist(task);
     unawaited(NotificationService.instance.scheduleForTask(task));
   }

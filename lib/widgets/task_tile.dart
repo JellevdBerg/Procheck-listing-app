@@ -8,6 +8,7 @@ import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'attachments_editor.dart';
+import 'due_date_calendar_dialog.dart';
 import 'nocturne/nocturne_widgets.dart';
 import 'notes_field.dart';
 import 'wobble_checkbox.dart';
@@ -23,6 +24,8 @@ class TaskTile extends ConsumerStatefulWidget {
     this.onExplicitDelete,
     this.autoRemoveWhenChecked = false,
     this.reorderIndex,
+    this.expanded,
+    this.onExpandedChanged,
   });
 
   final Task task;
@@ -50,6 +53,14 @@ class TaskTile extends ConsumerStatefulWidget {
   /// shown.
   final int? reorderIndex;
 
+  /// When set (together with [onExpandedChanged]), this tile's expanded
+  /// state is controlled by the caller instead of managed internally —
+  /// used by [ProjectDetailOverlay] so opening one task collapses any
+  /// other that's open (an accordion). Omit both to let the tile track
+  /// its own expanded state, as it always has.
+  final bool? expanded;
+  final ValueChanged<bool>? onExpandedChanged;
+
   @override
   ConsumerState<TaskTile> createState() => _TaskTileState();
 }
@@ -60,10 +71,17 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   static const _sideBySideBreakpoint = 480.0;
 
   bool _expanded = false;
-  late final TextEditingController _notesController;
-  late final FocusNode _notesFocusNode;
-  final _newSubtaskController = TextEditingController();
   Timer? _autoRemoveTimer;
+
+  bool get _effectiveExpanded => widget.expanded ?? _expanded;
+
+  void _setExpanded(bool value) {
+    if (widget.onExpandedChanged != null) {
+      widget.onExpandedChanged!(value);
+    } else {
+      setState(() => _expanded = value);
+    }
+  }
 
   // Snapshotting the checked flag as a primitive rather than comparing
   // oldWidget.task.isChecked to widget.task.isChecked directly: Task is a
@@ -82,19 +100,11 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   void initState() {
     super.initState();
     _lastIsChecked = widget.task.isChecked;
-    _notesController = TextEditingController(text: widget.task.notes ?? '');
-    _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
   }
 
   @override
   void didUpdateWidget(covariant TaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Keep the field in sync with external changes (e.g. undo elsewhere)
-    // without clobbering text the user is actively editing.
-    if (!_notesFocusNode.hasFocus &&
-        widget.task.notes != oldWidget.task.notes) {
-      _notesController.text = widget.task.notes ?? '';
-    }
 
     final wasChecked = _lastIsChecked;
     final isChecked = widget.task.isChecked;
@@ -120,22 +130,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
   @override
   void dispose() {
     _autoRemoveTimer?.cancel();
-    _notesFocusNode.removeListener(_onNotesFocusChange);
-    _notesFocusNode.dispose();
-    _notesController.dispose();
-    _newSubtaskController.dispose();
     super.dispose();
-  }
-
-  void _onNotesFocusChange() {
-    if (!_notesFocusNode.hasFocus) _saveNotes();
-  }
-
-  void _saveNotes() {
-    final text = _notesController.text.trim();
-    ref
-        .read(tasksProvider.notifier)
-        .setTaskNotes(widget.task.id, text.isEmpty ? null : text);
   }
 
   @override
@@ -149,7 +144,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     // collapsed preview line would just be a duplicate. Due date shows as
     // its own tag (below) rather than duplicated into this text line.
     final subtitleParts = <String>[
-      if (!_expanded && (task.notes ?? '').trim().isNotEmpty)
+      if (!_effectiveExpanded && (task.notes ?? '').trim().isNotEmpty)
         task.notes!.trim(),
       if (task.hasSubtasks)
         '${task.completedSubtaskCount}/${task.subtasks.length} subtasks',
@@ -159,7 +154,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     return Column(
       children: [
         ListTile(
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () => _setExpanded(!_effectiveExpanded),
           leading: WobbleCheckbox(
             value: task.isChecked,
             reduceMotion: reduceMotion,
@@ -187,9 +182,15 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                 const SizedBox(width: 6),
               if (task.dueDate != null) ...[
                 NocturneTag(
-                  label: formatDueDate(task.dueDate!, settings.dateFormat),
+                  label: formatDueLabel(task, settings.dateFormat),
                   icon: Icons.access_time,
                   outline: true,
+                  // Neutral, not the Appearance accent — matches the rest of
+                  // the row's text/icons, same overdue-red rule as the
+                  // detail view's own due-date field (_DueDateRow below).
+                  color: task.dueDate!.isBefore(DateTime.now()) && !task.isChecked
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).hintColor,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -201,7 +202,7 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                   widget.onDelete();
                 },
               ),
-              Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              Icon(_effectiveExpanded ? Icons.expand_less : Icons.expand_more),
               if (widget.reorderIndex != null)
                 ReorderableDragStartListener(
                   index: widget.reorderIndex!,
@@ -220,61 +221,79 @@ class _TaskTileState extends ConsumerState<TaskTile> {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
-          child: _expanded
-              ? _ExpandedTaskDetail(
-                  task: task,
-                  notesController: _notesController,
-                  notesFocusNode: _notesFocusNode,
-                  newSubtaskController: _newSubtaskController,
-                  onAddSubtask: () => _addSubtask(notifier),
-                  breakpoint: _sideBySideBreakpoint,
-                )
+          child: _effectiveExpanded
+              ? TaskDetailEditor(task: task, breakpoint: _sideBySideBreakpoint)
               : const SizedBox(width: double.infinity),
         ),
         const Divider(height: 1),
       ],
     );
   }
-
-  void _addSubtask(TasksNotifier notifier) {
-    final title = _newSubtaskController.text.trim();
-    if (title.isEmpty) return;
-    notifier.addSubtask(widget.task.id, title);
-    _newSubtaskController.clear();
-  }
 }
+
+// A due date/time carries no separate "has a time" flag — setting a time
+// is optional, and skipping it is marked by parking the time component at
+// 23:59 (read as "due sometime that day" rather than a specific moment).
+// The same sentinel marks a date range's end, which was always a
+// whole-day concept. formatDueDate and _DueDateRow._pickDueDate are the
+// two places that create or read it.
+const _noTimeHour = 23;
+const _noTimeMinute = 59;
+bool _hasExplicitTime(DateTime d) =>
+    !(d.hour == _noTimeHour && d.minute == _noTimeMinute);
 
 /// Renders a due date's numeric date portion according to
 /// [AppSettings.dateFormat] (e.g. "09/20/2026, 2:30 PM"), so it actually
 /// matches whichever of the three formats is picked in Settings > Task
-/// defaults rather than always showing the same fixed "Sep 20" style.
+/// defaults rather than always showing the same fixed "Sep 20" style. Omits
+/// the time portion entirely when no specific time was set.
 String formatDueDate(DateTime dueDate, DateFormatOption format) {
+  final datePart = _formatDateOnly(dueDate, format);
+  if (!_hasExplicitTime(dueDate)) return datePart;
+
   final hour12 = dueDate.hour % 12 == 0 ? 12 : dueDate.hour % 12;
   final minute = dueDate.minute.toString().padLeft(2, '0');
   final period = dueDate.hour < 12 ? 'AM' : 'PM';
+  return '$datePart, $hour12:$minute $period';
+}
 
-  final month = dueDate.month.toString().padLeft(2, '0');
-  final day = dueDate.day.toString().padLeft(2, '0');
-  final year = dueDate.year.toString().padLeft(4, '0');
-  final datePart = switch (format) {
+String _formatDateOnly(DateTime date, DateFormatOption format) {
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  final year = date.year.toString().padLeft(4, '0');
+  return switch (format) {
     DateFormatOption.mdy => '$month/$day/$year',
     DateFormatOption.dmy => '$day/$month/$year',
     DateFormatOption.iso => '$year-$month-$day',
   };
-  return '$datePart, $hour12:$minute $period';
 }
 
-/// The expanded region of a [TaskTile]: subtasks below the task, with a
-/// notes panel that sits to the right when there's room for it and stacks
-/// underneath otherwise.
-class _ExpandedTaskDetail extends ConsumerWidget {
-  const _ExpandedTaskDetail({
+/// Renders a task's due date for display: a single moment (date + time) as
+/// before, or, when [Task.dueDateEnd] is set, a "start - end" date range
+/// (dates only, since a range spans whole days rather than a single
+/// moment).
+String formatDueLabel(Task task, DateFormatOption format) {
+  final dueDate = task.dueDate;
+  if (dueDate == null) return '';
+  final dueDateEnd = task.dueDateEnd;
+  if (dueDateEnd == null) return formatDueDate(dueDate, format);
+  return '${_formatDateOnly(dueDate, format)} - ${_formatDateOnly(dueDateEnd, format)}';
+}
+
+/// The due date/priority/subtasks/notes/attachments editing region shared
+/// by [TaskTile]'s expanded row and the task-creation sheet: subtasks below,
+/// with a notes panel that sits to the right when there's room for it and
+/// stacks underneath otherwise.
+class ExpandedTaskDetail extends ConsumerWidget {
+  const ExpandedTaskDetail({
+    super.key,
     required this.task,
     required this.notesController,
     required this.notesFocusNode,
     required this.newSubtaskController,
     required this.onAddSubtask,
     required this.breakpoint,
+    this.padding = const EdgeInsets.fromLTRB(56, 0, 16, 16),
   });
 
   final Task task;
@@ -284,10 +303,15 @@ class _ExpandedTaskDetail extends ConsumerWidget {
   final VoidCallback onAddSubtask;
   final double breakpoint;
 
+  /// Defaults to [TaskTile]'s own indent (aligning under its checkbox +
+  /// title); a caller without that leading row, like the task-creation
+  /// sheet, passes its own.
+  final EdgeInsetsGeometry padding;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(56, 0, 16, 16),
+      padding: padding,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final subtasks = _SubtasksSection(
@@ -358,6 +382,92 @@ class _ExpandedTaskDetail extends ConsumerWidget {
   }
 }
 
+/// [ExpandedTaskDetail] plus the controllers/lifecycle it needs — the
+/// reusable, self-contained version of the editing region [TaskTile] shows
+/// once expanded. Anywhere else that needs the same due
+/// date/priority/subtasks/notes/attachments editing for a task (the
+/// task-creation sheet, notably) uses this directly instead of
+/// re-implementing that wiring.
+class TaskDetailEditor extends ConsumerStatefulWidget {
+  const TaskDetailEditor({
+    super.key,
+    required this.task,
+    this.breakpoint = 480,
+    this.padding = const EdgeInsets.fromLTRB(56, 0, 16, 16),
+  });
+
+  final Task task;
+  final double breakpoint;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  ConsumerState<TaskDetailEditor> createState() => _TaskDetailEditorState();
+}
+
+class _TaskDetailEditorState extends ConsumerState<TaskDetailEditor> {
+  late final TextEditingController _notesController;
+  late final FocusNode _notesFocusNode;
+  final _newSubtaskController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _notesController = TextEditingController(text: widget.task.notes ?? '');
+    _notesFocusNode = FocusNode()..addListener(_onNotesFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskDetailEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the field in sync with external changes (e.g. undo elsewhere)
+    // without clobbering text the user is actively editing.
+    if (!_notesFocusNode.hasFocus &&
+        widget.task.notes != oldWidget.task.notes) {
+      _notesController.text = widget.task.notes ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _notesFocusNode.removeListener(_onNotesFocusChange);
+    _notesFocusNode.dispose();
+    _notesController.dispose();
+    _newSubtaskController.dispose();
+    super.dispose();
+  }
+
+  void _onNotesFocusChange() {
+    if (!_notesFocusNode.hasFocus) _saveNotes();
+  }
+
+  void _saveNotes() {
+    final text = _notesController.text.trim();
+    ref
+        .read(tasksProvider.notifier)
+        .setTaskNotes(widget.task.id, text.isEmpty ? null : text);
+  }
+
+  void _addSubtask() {
+    final title = _newSubtaskController.text.trim();
+    if (title.isEmpty) return;
+    ref.read(tasksProvider.notifier).addSubtask(widget.task.id, title);
+    _newSubtaskController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpandedTaskDetail(
+      task: widget.task,
+      notesController: _notesController,
+      notesFocusNode: _notesFocusNode,
+      newSubtaskController: _newSubtaskController,
+      onAddSubtask: _addSubtask,
+      breakpoint: widget.breakpoint,
+      padding: widget.padding,
+    );
+  }
+}
+
 class _DueDateRow extends ConsumerWidget {
   const _DueDateRow({required this.task});
 
@@ -392,7 +502,7 @@ class _DueDateRow extends ConsumerWidget {
               : InkWell(
                   onTap: () => _pickDueDate(context, ref),
                   child: Text(
-                    'Due ${formatDueDate(dueDate, dateFormat)}',
+                    'Due ${formatDueLabel(task, dateFormat)}',
                     style: TextStyle(
                       color: isOverdue ? theme.colorScheme.error : null,
                       fontWeight: isOverdue ? FontWeight.w600 : null,
@@ -412,29 +522,58 @@ class _DueDateRow extends ConsumerWidget {
     );
   }
 
+  /// One calendar for both a single due date and a date range — see
+  /// [showDueDateCalendarDialog]. A range needs no time (it's about which
+  /// days are covered, not a moment), so only a single-day pick goes on to
+  /// ask for a time, and even then answering is optional: dismissing that
+  /// step leaves the task with no specific time rather than abandoning the
+  /// date that was just picked.
   Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
-    final now = DateTime.now();
-    final initial = task.dueDate ?? now;
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial.isBefore(now) ? now : initial,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 5)),
+    final selection = await showDueDateCalendarDialog(
+      context,
+      initialStart: task.dueDate,
+      initialEnd: task.dueDateEnd,
     );
-    if (date == null || !context.mounted) return;
+    if (selection == null || !context.mounted) return;
 
+    if (selection.end != null) {
+      final previousTime = task.dueDate;
+      final keepsTime = previousTime != null && _hasExplicitTime(previousTime);
+      final start = DateTime(
+        selection.start.year,
+        selection.start.month,
+        selection.start.day,
+        keepsTime ? previousTime.hour : _noTimeHour,
+        keepsTime ? previousTime.minute : _noTimeMinute,
+      );
+      final end = DateTime(
+        selection.end!.year,
+        selection.end!.month,
+        selection.end!.day,
+        _noTimeHour,
+        _noTimeMinute,
+      );
+      ref
+          .read(tasksProvider.notifier)
+          .setTaskDueDate(task.id, start, dueDateEnd: end);
+      return;
+    }
+
+    final initialTime = task.dueDate != null && _hasExplicitTime(task.dueDate!)
+        ? TimeOfDay.fromDateTime(task.dueDate!)
+        : const TimeOfDay(hour: _noTimeHour, minute: _noTimeMinute);
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(initial),
+      initialTime: initialTime,
     );
-    if (time == null) return;
+    if (!context.mounted) return;
 
     final dueDate = DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.minute,
+      selection.start.year,
+      selection.start.month,
+      selection.start.day,
+      time?.hour ?? _noTimeHour,
+      time?.minute ?? _noTimeMinute,
     );
     ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
   }
