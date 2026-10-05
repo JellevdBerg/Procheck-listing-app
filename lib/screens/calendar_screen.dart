@@ -1305,6 +1305,7 @@ class _CrossingPillBorder extends OutlinedBorder {
     required this.colWidth,
     required this.weekdayCols,
     required this.weekendCols,
+    required this.allowTrailingLinger,
     required this.leadingTaper,
     required this.weekdayHeight,
     required this.weekendHeight,
@@ -1316,6 +1317,16 @@ class _CrossingPillBorder extends OutlinedBorder {
   final double colWidth;
   final int weekdayCols;
   final int weekendCols;
+
+  /// Whether the trailing connector is allowed to keep rendering (tracking
+  /// the box's own, still-animating width) even once [weekendCols] itself
+  /// has already dropped to 0 — true only for the one rebuild right after
+  /// a drag shrinks back out of its own weekend, so a *plain* weekday span
+  /// shrinking (which never had a connector to begin with) never grows one
+  /// just because its box also happens to be animating narrower. Set by
+  /// [_CalendarCrossingPillState], which is the one place that can compare
+  /// this build's [weekendCols] against the previous one's.
+  final bool allowTrailingLinger;
 
   /// True when this box's own left edge picks up mid-taper from a weekend
   /// the previous row's segment ended in — the mirror image of the normal
@@ -1332,6 +1343,7 @@ class _CrossingPillBorder extends OutlinedBorder {
     colWidth: colWidth,
     weekdayCols: weekdayCols,
     weekendCols: weekendCols,
+    allowTrailingLinger: allowTrailingLinger,
     leadingTaper: leadingTaper,
     weekdayHeight: weekdayHeight,
     weekendHeight: weekendHeight,
@@ -1357,21 +1369,22 @@ class _CrossingPillBorder extends OutlinedBorder {
     final thinBottom = thinTop + weekendHeight;
 
     // The weekday/weekend boundary's absolute position, independent of the
-    // box's own current width (see the class doc). Whether to actually
-    // draw a trailing connector is then decided by comparing the box's
-    // real right edge to this boundary, rather than reading [weekendCols]
-    // directly: while a drag shrinks back out of its own weekend,
-    // [weekendCols] drops to 0 the instant the pointer crosses back onto a
-    // weekday, but the box's `AnimatedPositioned` width takes another
-    // 150ms to tween down to the new, weekend-less span — so for that
-    // whole stretch the box is still visibly wider than the boundary, and
-    // the connector needs to keep rendering (shrinking smoothly along with
-    // the box) instead of vanishing instantly into a full-width pill.
+    // box's own current width (see the class doc). While a drag shrinks
+    // back out of its own weekend, [weekendCols] drops to 0 the instant the
+    // pointer crosses back onto a weekday, but the box's
+    // `AnimatedPositioned` width takes another 150ms to tween down to the
+    // new, weekend-less span — so for that whole stretch the box is still
+    // visibly wider than the boundary, and (when [allowTrailingLinger] says
+    // this is genuinely that case, not just a plain weekday span shrinking
+    // on its own) the connector keeps rendering, shrinking smoothly along
+    // with the box, instead of vanishing instantly into a full-width pill.
     final weekdayBoundary = (rect.left + weekdayCols * colWidth - 2).clamp(
       rect.left,
       rect.right,
     );
-    final hasTrailingTaper = rect.right > weekdayBoundary + 0.5;
+    final hasTrailingTaper =
+        weekendCols > 0 ||
+        (allowTrailingLinger && rect.right > weekdayBoundary + 0.5);
     final neckMid = weekdayBoundary;
 
     final fullCapR = _capRadius(false);
@@ -1510,6 +1523,29 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
   static const _weekdayHeight = 27.0;
   static const _weekendHeight = 8.0;
 
+  // Whether the *previous* configuration of this widget had a trailing
+  // weekend connector — true for exactly one rebuild right after a drag
+  // shrinks back out of its own weekend, which is what lets the shape
+  // keep drawing (and smoothly retracting) that connector below while its
+  // box is still animating down from the wider, weekend-inclusive size.
+  // Without this, [_CrossingPillBorder] would have no way to tell "box is
+  // still wide because it's catching up from a weekend" apart from "box is
+  // still wide because it's just a bigger plain weekday span shrinking" —
+  // and would wrongly paint a connector for the latter too.
+  bool _recentlyHadWeekend = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _recentlyHadWeekend = widget.weekendCols > 0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _CalendarCrossingPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _recentlyHadWeekend = oldWidget.weekendCols > 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
@@ -1555,6 +1591,7 @@ class _CalendarCrossingPillState extends State<_CalendarCrossingPill> {
       colWidth: widget.colWidth,
       weekdayCols: widget.weekdayCols,
       weekendCols: widget.weekendCols,
+      allowTrailingLinger: _recentlyHadWeekend,
       leadingTaper: widget.leadingTaper,
       weekdayHeight: _weekdayHeight,
       weekendHeight: _weekendHeight,
