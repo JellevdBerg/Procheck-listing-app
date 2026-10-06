@@ -198,19 +198,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     });
   }
 
-  /// Opens the normal new-task sheet (title/project only — it never asks
-  /// about a due date) and, once a task comes back, sets its due date to
-  /// the range just drawn on the calendar.
+  /// Opens the new-task sheet pre-filled with the range just drawn on the
+  /// calendar, so its due date section already shows that date (still
+  /// editable there) instead of created task briefly reading "Set due date".
   Future<void> _createTaskForRange(DateTime start, DateTime end) async {
-    final task = await showCreateTaskSheet(context);
-    if (task == null || !mounted) return;
-    ref
-        .read(tasksProvider.notifier)
-        .setTaskDueDate(
-          task.id,
-          start,
-          dueDateEnd: _isSameDay(start, end) ? null : end,
-        );
+    await showCreateTaskSheet(
+      context,
+      initialDueDate: start,
+      initialDueDateEnd: _isSameDay(start, end) ? null : end,
+    );
   }
 
   /// A task filed under a project opens that project, scrolled to it; an

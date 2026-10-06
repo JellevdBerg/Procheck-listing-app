@@ -121,12 +121,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     required String title,
     String? projectId,
     TaskPriority priority = TaskPriority.none,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     return _addTask(
       title: title,
       projectId: projectId,
       subtasks: const [],
       priority: priority,
+      dueDate: dueDate,
+      dueDateEnd: dueDateEnd,
     );
   }
 
@@ -135,6 +139,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     String? projectId,
     String? title,
     TaskPriority priority = TaskPriority.none,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     final subtasks = template.subtasks
         .map(
@@ -156,6 +162,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       priority: priority,
       notes: template.notes,
       attachments: attachments,
+      dueDate: dueDate,
+      dueDateEnd: dueDateEnd,
     );
   }
 
@@ -167,6 +175,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     TaskPriority priority = TaskPriority.none,
     String? notes,
     List<Attachment>? attachments,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     final task = Task(
       id: const Uuid().v4(),
@@ -178,11 +188,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       priorityIndex: priority.index,
       notes: notes,
       attachments: attachments,
+      dueDate: dueDate,
+      dueDateEnd: dueDate == null ? null : dueDateEnd,
       workspaceId: _ref.read(settingsProvider).currentWorkspaceId,
     );
     unawaited(_box.put(task.id, task));
     state = [task, ...state];
     _logActivity(task, ActivityKind.taskAdded, 'You added "${task.title}"');
+    if (dueDate != null) {
+      unawaited(NotificationService.instance.scheduleForTask(task));
+    }
     return task;
   }
 
