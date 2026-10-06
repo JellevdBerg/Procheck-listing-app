@@ -253,8 +253,8 @@ class _CardHeader extends StatelessWidget {
 }
 
 /// Everything below the page's own title: the stat row, Today & Needs
-/// Attention, Task Status, the Projects table, and Recent
-/// Activity — shared between the Dashboard (active projects) and the
+/// Attention, the Projects table, and Recent Activity — shared between
+/// the Dashboard (active projects) and the
 /// Archive screen's mini-dashboard (archived projects), so [projects] and
 /// [tasks] are whatever scope the caller wants ([tasks] should already be
 /// filtered down to those projects' tasks, plus unfiled ones if relevant).
@@ -313,10 +313,6 @@ class ProjectsOverview extends StatelessWidget {
         .where((t) => t.priority == TaskPriority.high)
         .length;
 
-    final activeBucket = tasks
-        .where((t) => !t.isChecked && t.dueDate == null)
-        .length;
-    final upcomingBucket = tasks.where((t) => isPendingTask(t, now)).length;
     final overdueBucket = overdueTasks.length;
 
     final overallProgress = tasks.isEmpty
@@ -352,12 +348,6 @@ class ProjectsOverview extends StatelessWidget {
           projectById: projectById,
           now: now,
           onOpenTask: onOpenTask,
-        ),
-        const SizedBox(height: 22.4),
-        _TaskStatusCard(
-          active: activeBucket,
-          overdue: overdueBucket,
-          upcoming: upcomingBucket,
         ),
         const SizedBox(height: 22.4),
         _ProjectsTableCard(
@@ -695,125 +685,6 @@ class _AttentionRow extends StatelessWidget {
         onTap: () => onOpenTask(project.id, task.id, rowContext),
         child: content,
       ),
-    );
-  }
-}
-
-/// A horizontal stacked bar splitting every open task into active (no due
-/// date yet)/overdue/upcoming, with a count legend below — the Dashboard's
-/// answer to "what's the shape of my open work right now."
-class _TaskStatusCard extends StatelessWidget {
-  const _TaskStatusCard({
-    required this.active,
-    required this.overdue,
-    required this.upcoming,
-  });
-
-  final int active;
-  final int overdue;
-  final int upcoming;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    final total = active + overdue + upcoming;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16.8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(icon: Icons.bar_chart, label: 'Task Status · $total open'),
-            const SizedBox(height: 14),
-            _StackedBar(
-              trackColor: tokens.neutral800,
-              segments: [
-                _BarSegment(active, NocturneStatus.done),
-                _BarSegment(overdue, NocturnePriority.high),
-                _BarSegment(upcoming, tokens.neutral500),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                _LegendChip(color: NocturneStatus.done, text: '$active active'),
-                _LegendChip(color: NocturnePriority.high, text: '$overdue overdue'),
-                _LegendChip(color: tokens.neutral500, text: '$upcoming upcoming'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BarSegment {
-  const _BarSegment(this.value, this.color);
-
-  final int value;
-  final Color color;
-}
-
-class _StackedBar extends StatelessWidget {
-  const _StackedBar({required this.segments, required this.trackColor});
-
-  final List<_BarSegment> segments;
-  final Color trackColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final total = segments.fold<int>(0, (sum, s) => sum + s.value);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: SizedBox(
-        height: 8,
-        width: double.infinity,
-        child: total <= 0
-            ? ColoredBox(color: trackColor)
-            : Row(
-                // A childless ColoredBox sizes itself to the smallest box its
-                // constraints allow, and Row's default center alignment gives
-                // its children loose (0..height) cross-axis constraints — so
-                // without `stretch` every segment collapses to zero height.
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final segment in segments)
-                    if (segment.value > 0)
-                      Expanded(
-                        flex: segment.value,
-                        child: ColoredBox(color: segment.color),
-                      ),
-                ],
-              ),
-      ),
-    );
-  }
-}
-
-class _LegendChip extends StatelessWidget {
-  const _LegendChip({required this.color, required this.text});
-
-  final Color color;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(text, style: TextStyle(fontSize: 12, color: tokens.neutral300)),
-      ],
     );
   }
 }
