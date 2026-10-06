@@ -510,7 +510,7 @@ void main() {
     );
 
     testWidgets(
-      'the PROJECT and PROGRESS headers always show a sort icon, even unsorted',
+      'every Projects table column header always shows a sort icon, even unsorted',
       (tester) async {
         final container = ProviderContainer();
         addTearDown(container.dispose);
@@ -525,9 +525,57 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // One per sortable column (PROJECT, PROGRESS) — the whole point is
-        // that the sort affordance is visible before anyone taps anything.
-        expect(find.byIcon(Icons.unfold_more), findsNWidgets(2));
+        // One per sortable column (PROJECT, TASKS, PROGRESS, STATUS) — the
+        // whole point is that the sort affordance is visible before anyone
+        // taps anything.
+        expect(find.byIcon(Icons.unfold_more), findsNWidgets(4));
+      },
+    );
+
+    testWidgets(
+      'tapping the STATUS header sorts projects by urgency (overdue first)',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final calm = container.read(projectsProvider.notifier).addProject('Calm');
+        final onFire = container.read(projectsProvider.notifier).addProject('OnFire');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        tasksNotifier.addBlankTask(title: 'Calm task', projectId: calm.id);
+        final urgent = tasksNotifier.addBlankTask(
+          title: 'Urgent task',
+          projectId: onFire.id,
+        );
+        tasksNotifier.setTaskDueDate(
+          urgent.id,
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('STATUS'));
+        await tester.pumpAndSettle();
+
+        // Project names also appear in Today & Needs Attention and Recent
+        // Activity — scoping to the Projects card (found via its own
+        // PROJECT header) isolates the table row.
+        final projectsCard = find
+            .ancestor(of: find.text('PROJECT'), matching: find.byType(Card))
+            .first;
+        double tableRowY(String projectName) => tester
+            .getTopLeft(
+              find.descendant(of: projectsCard, matching: find.text(projectName)),
+            )
+            .dy;
+
+        // Ascending by urgency rank: OVERDUE (0) sorts before open (1).
+        expect(tableRowY('OnFire'), lessThan(tableRowY('Calm')));
       },
     );
 

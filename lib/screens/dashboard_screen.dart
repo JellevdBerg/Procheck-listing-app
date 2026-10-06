@@ -711,11 +711,20 @@ class _AttentionRow extends StatelessWidget {
 
 /// Which column [_ProjectsTableCard] is sorted by — null means the
 /// caller's own default order (overdue-first, then most open work first).
-enum _ProjectSortColumn { name, progress }
+enum _ProjectSortColumn { name, tasks, progress, status }
+
+/// How urgently a project's [_statusTag] reads, for sorting STATUS the way
+/// it visually ranks: OVERDUE first, then any other open work, then
+/// "No tasks" (covers both no tasks at all and everything already done).
+int _statusRank(ProjectSummary s) {
+  if (s.hasOverdue) return 0;
+  if (s.open > 0) return 1;
+  return 2;
+}
 
 /// The per-project table: how much work is open, the completion bar, and a
 /// status badge — ranked overdue-first, then by how much is left open by
-/// default, or by tapping PROJECT/PROGRESS to sort some other way.
+/// default, or by tapping any column header to sort some other way.
 class _ProjectsTableCard extends StatefulWidget {
   const _ProjectsTableCard({
     required this.summaries,
@@ -758,15 +767,17 @@ class _ProjectsTableCardState extends State<_ProjectsTableCard> {
       ..sort((a, b) => switch (column) {
         _ProjectSortColumn.name =>
           a.project.name.toLowerCase().compareTo(b.project.name.toLowerCase()),
+        _ProjectSortColumn.tasks => a.open.compareTo(b.open),
         _ProjectSortColumn.progress =>
           (a.progress ?? -1).compareTo(b.progress ?? -1),
+        _ProjectSortColumn.status =>
+          _statusRank(a).compareTo(_statusRank(b)),
       });
     return _ascending ? sorted : sorted.reversed.toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.nocturne;
     final summaries = _sortedSummaries;
     return Card(
       margin: EdgeInsets.zero,
@@ -798,9 +809,11 @@ class _ProjectsTableCardState extends State<_ProjectsTableCard> {
                     ),
                   ),
                   Expanded(
-                    child: Text(
-                      'TASKS',
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+                    child: _SortableHeaderCell(
+                      label: 'TASKS',
+                      active: _sortColumn == _ProjectSortColumn.tasks,
+                      ascending: _ascending,
+                      onTap: () => _tapColumn(_ProjectSortColumn.tasks),
                     ),
                   ),
                   Expanded(
@@ -814,10 +827,12 @@ class _ProjectsTableCardState extends State<_ProjectsTableCard> {
                   ),
                   Expanded(
                     flex: 2,
-                    child: Text(
-                      'STATUS',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+                    child: _SortableHeaderCell(
+                      label: 'STATUS',
+                      active: _sortColumn == _ProjectSortColumn.status,
+                      ascending: _ascending,
+                      onTap: () => _tapColumn(_ProjectSortColumn.status),
+                      alignEnd: true,
                     ),
                   ),
                 ],
@@ -846,6 +861,7 @@ class _SortableHeaderCell extends StatelessWidget {
     required this.active,
     required this.ascending,
     required this.onTap,
+    this.alignEnd = false,
   });
 
   final String label;
@@ -853,10 +869,36 @@ class _SortableHeaderCell extends StatelessWidget {
   final bool ascending;
   final VoidCallback onTap;
 
+  /// True for the right-aligned STATUS column, so the label+icon hug the
+  /// right edge like the plain text it replaced.
+  final bool alignEnd;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
     final color = active ? context.nocturneAccent : tokens.neutral500;
+    // Flexible + ellipsis (rather than Align wrapping a min-size Row) so a
+    // narrow column shrinks the label instead of overflowing the row.
+    final labelText = Flexible(
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          letterSpacing: 0.06,
+          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    );
+    final icon = Icon(
+      active
+          ? (ascending ? Icons.arrow_upward : Icons.arrow_downward)
+          : Icons.unfold_more,
+      size: 13,
+      color: color,
+    );
     return Tooltip(
       message: 'Tap to sort',
       child: MouseRegion(
@@ -864,26 +906,8 @@ class _SortableHeaderCell extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: color,
-                  letterSpacing: 0.06,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 3),
-              Icon(
-                active
-                    ? (ascending ? Icons.arrow_upward : Icons.arrow_downward)
-                    : Icons.unfold_more,
-                size: 13,
-                color: color,
-              ),
-            ],
+            mainAxisAlignment: alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [labelText, const SizedBox(width: 3), icon],
           ),
         ),
       ),
