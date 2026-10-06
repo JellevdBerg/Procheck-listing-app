@@ -127,8 +127,9 @@ class DashboardScreen extends ConsumerWidget {
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
   /// Like [onOpenProject], but for navigating in from a specific task (the
-  /// Today & Needs Attention list) rather than the project itself.
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  /// Today & Needs Attention list) rather than the project itself. Null
+  /// projectId means an unfiled task.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
@@ -281,7 +282,7 @@ class ProjectsOverview extends StatelessWidget {
   final String projectsStatLabel;
   final String emptyProjectsMessage;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
@@ -577,7 +578,7 @@ class _AttentionCard extends StatelessWidget {
   final List<Task> tasks;
   final Map<String, Project> projectById;
   final DateTime now;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   /// This card summarizes what needs attention rather than being a full
@@ -656,7 +657,7 @@ class _AttentionRow extends StatelessWidget {
   final Task task;
   final Project? project;
   final DateTime now;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   bool get _isOverdue => !task.dueDate!.isAfter(now);
@@ -718,11 +719,17 @@ class _AttentionRow extends StatelessWidget {
       ),
     );
 
-    if (project == null) return content;
     return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenTask(project.id, task.id, rowContext),
-        child: content,
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
+          splashColor: context.nocturneAccent.withValues(alpha: 0.18),
+          highlightColor: context.nocturneAccent.withValues(alpha: 0.18),
+          onTap: () => onOpenTask(project?.id, task.id, rowContext),
+          child: content,
+        ),
       ),
     );
   }

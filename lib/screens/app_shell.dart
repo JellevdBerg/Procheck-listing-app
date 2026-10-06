@@ -398,14 +398,12 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.templates => const TemplatesScreen(),
       AppScreen.archived => ArchivedScreen(
         onOpenProject: _openProjectFromCard,
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+        onOpenTask: _openTask,
       ),
       AppScreen.settings => const SettingsScreen(),
       AppScreen.dashboard => DashboardScreen(
         onOpenProject: _openProjectFromCard,
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+        onOpenTask: _openTask,
       ),
     };
   }

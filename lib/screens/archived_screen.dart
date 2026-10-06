@@ -21,8 +21,10 @@ class ArchivedScreen extends ConsumerStatefulWidget {
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
   /// Like [onOpenProject], but for navigating in from a specific task in
-  /// the overview's Today & Needs Attention list.
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  /// the overview's Today & Needs Attention list. Archived scope never
+  /// includes unfiled tasks (see [_archivedProjectTasks]), so projectId is
+  /// always non-null in practice here.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
