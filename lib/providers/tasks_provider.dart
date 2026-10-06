@@ -493,12 +493,14 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   /// current one afterward, same as normal operation.
   void restoreAll(List<Task> tasks) {
     unawaited(NotificationService.instance.cancelAll());
-    unawaited(_box.clear());
-    unawaited(_box.putAll({for (final t in tasks) t.id: t}));
+    unawaited(_replaceBoxContents(tasks));
     final settings = _ref.read(settingsProvider);
-    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
-    state = _box.values
-        .where((t) => t.workspaceId == settings.currentWorkspaceId)
+    final defaultWorkspaceId = settings.workspaceIds.first;
+    state = tasks
+        .where(
+          (t) => (t.workspaceId ?? defaultWorkspaceId) ==
+              settings.currentWorkspaceId,
+        )
         .toList();
     _sortState();
     for (final task in tasks) {
@@ -506,5 +508,22 @@ class TasksNotifier extends StateNotifier<List<Task>> {
         unawaited(NotificationService.instance.scheduleForTask(task));
       }
     }
+  }
+
+  /// Replaces [_box]'s entire contents with [tasks] — used by [restoreAll].
+  /// `clear()` and `putAll()` are each async (the web/IndexedDB backend has
+  /// no synchronous fast path for either), so firing them off unawaited in
+  /// sequence — as every other fire-and-forget write in this class does —
+  /// lets them race: if `clear()`'s own in-memory keystore wipe lands after
+  /// `putAll()`'s, the just-restored tasks are wiped right back out from
+  /// under the box, even though [state] (and so the UI) already reflects
+  /// them. Awaiting `clear()` before starting `putAll()` keeps them in
+  /// order. [state] no longer depends on reading `_box.values` back, so it
+  /// stays correct regardless of how long this takes to land on disk.
+  Future<void> _replaceBoxContents(List<Task> tasks) async {
+    await _box.clear();
+    await _box.putAll({for (final t in tasks) t.id: t});
+    final settings = _ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
   }
 }
