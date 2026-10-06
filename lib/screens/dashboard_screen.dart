@@ -6,6 +6,7 @@ import '../models/project.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../theme/nocturne_theme.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';

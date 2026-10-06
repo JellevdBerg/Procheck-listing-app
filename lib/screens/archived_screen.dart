@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../providers/projects_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import 'dashboard_screen.dart' show ProjectsOverview;
