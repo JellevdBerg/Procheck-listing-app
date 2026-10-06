@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/project.dart';
-import '../models/recurrence_rule.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
@@ -198,19 +197,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     });
   }
 
-  /// Opens the normal new-task sheet (title/project only — it never asks
-  /// about a due date) and, once a task comes back, sets its due date to
-  /// the range just drawn on the calendar.
+  /// Opens the new-task sheet pre-filled with the range just drawn on the
+  /// calendar, so its due date section already shows that date (still
+  /// editable there) instead of created task briefly reading "Set due date".
   Future<void> _createTaskForRange(DateTime start, DateTime end) async {
-    final task = await showCreateTaskSheet(context);
-    if (task == null || !mounted) return;
-    ref
-        .read(tasksProvider.notifier)
-        .setTaskDueDate(
-          task.id,
-          start,
-          dueDateEnd: _isSameDay(start, end) ? null : end,
-        );
+    await showCreateTaskSheet(
+      context,
+      initialDueDate: start,
+      initialDueDateEnd: _isSameDay(start, end) ? null : end,
+    );
   }
 
   /// A task filed under a project opens that project, scrolled to it; an
@@ -1327,10 +1322,6 @@ Widget _taskBarContentRow({
       if (task.hasSubtasks) ...[
         const SizedBox(width: 4),
         Icon(Icons.checklist, size: 13, color: style.fg.withValues(alpha: 0.85)),
-      ],
-      if (task.recurrence != RecurrenceRule.none) ...[
-        const SizedBox(width: 4),
-        Icon(Icons.repeat, size: 13, color: style.fg.withValues(alpha: 0.85)),
       ],
       if (taskmasterOn && hovering) ...[
         const SizedBox(width: 4),

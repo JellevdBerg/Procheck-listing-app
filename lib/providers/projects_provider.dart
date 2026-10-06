@@ -266,13 +266,28 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   /// span every workspace (a full backup), so [state] is narrowed back down
   /// to the current one afterward, same as normal operation.
   void restoreAll(List<Project> projects) {
-    unawaited(_box.clear());
-    unawaited(_box.putAll({for (final p in projects) p.id: p}));
+    unawaited(_replaceBoxContents(projects));
     final settings = _ref.read(settingsProvider);
-    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
-    state = _box.values
-        .where((p) => p.workspaceId == settings.currentWorkspaceId)
+    final defaultWorkspaceId = settings.workspaceIds.first;
+    state = projects
+        .where(
+          (p) => (p.workspaceId ?? defaultWorkspaceId) ==
+              settings.currentWorkspaceId,
+        )
         .toList();
     _sortState();
+  }
+
+  /// Replaces [_box]'s entire contents with [projects] — used by
+  /// [restoreAll]. `clear()` and `putAll()` are each async with no
+  /// synchronous fast path, so `clear()` must be awaited before `putAll()`
+  /// starts — firing both off unawaited in sequence lets them race, and a
+  /// `clear()` that lands after `putAll()` wipes the just-restored data
+  /// back out of the box.
+  Future<void> _replaceBoxContents(List<Project> projects) async {
+    await _box.clear();
+    await _box.putAll({for (final p in projects) p.id: p});
+    final settings = _ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
   }
 }

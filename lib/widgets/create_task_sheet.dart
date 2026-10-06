@@ -15,6 +15,8 @@ Future<Task?> showCreateTaskSheet(
   BuildContext context, {
   String? initialProjectId,
   TaskTemplate? initialTemplate,
+  DateTime? initialDueDate,
+  DateTime? initialDueDateEnd,
 }) {
   return showBlurredDialog<Task>(
     context: context,
@@ -25,6 +27,8 @@ Future<Task?> showCreateTaskSheet(
         child: _CreateTaskSheet(
           initialProjectId: initialProjectId,
           initialTemplate: initialTemplate,
+          initialDueDate: initialDueDate,
+          initialDueDateEnd: initialDueDateEnd,
         ),
       ),
     ),
@@ -32,10 +36,17 @@ Future<Task?> showCreateTaskSheet(
 }
 
 class _CreateTaskSheet extends ConsumerStatefulWidget {
-  const _CreateTaskSheet({this.initialProjectId, this.initialTemplate});
+  const _CreateTaskSheet({
+    this.initialProjectId,
+    this.initialTemplate,
+    this.initialDueDate,
+    this.initialDueDateEnd,
+  });
 
   final String? initialProjectId;
   final TaskTemplate? initialTemplate;
+  final DateTime? initialDueDate;
+  final DateTime? initialDueDateEnd;
 
   @override
   ConsumerState<_CreateTaskSheet> createState() => _CreateTaskSheetState();
@@ -175,12 +186,16 @@ class _CreateTaskSheetState extends ConsumerState<_CreateTaskSheet> {
         projectId: _selectedProjectId,
         title: name,
         priority: defaultPriority,
+        dueDate: widget.initialDueDate,
+        dueDateEnd: widget.initialDueDateEnd,
       );
     } else {
       task = notifier.addBlankTask(
         title: name,
         projectId: _selectedProjectId,
         priority: defaultPriority,
+        dueDate: widget.initialDueDate,
+        dueDateEnd: widget.initialDueDateEnd,
       );
     }
 

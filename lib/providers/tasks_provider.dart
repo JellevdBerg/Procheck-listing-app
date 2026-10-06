@@ -9,7 +9,6 @@ import '../data/notification_service.dart';
 import '../data/sound_service.dart';
 import '../models/activity_entry.dart';
 import '../models/attachment.dart';
-import '../models/recurrence_rule.dart';
 import '../models/subtask.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
@@ -121,12 +120,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     required String title,
     String? projectId,
     TaskPriority priority = TaskPriority.none,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     return _addTask(
       title: title,
       projectId: projectId,
       subtasks: const [],
       priority: priority,
+      dueDate: dueDate,
+      dueDateEnd: dueDateEnd,
     );
   }
 
@@ -135,6 +138,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     String? projectId,
     String? title,
     TaskPriority priority = TaskPriority.none,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     final subtasks = template.subtasks
         .map(
@@ -156,6 +161,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       priority: priority,
       notes: template.notes,
       attachments: attachments,
+      dueDate: dueDate,
+      dueDateEnd: dueDateEnd,
     );
   }
 
@@ -167,6 +174,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     TaskPriority priority = TaskPriority.none,
     String? notes,
     List<Attachment>? attachments,
+    DateTime? dueDate,
+    DateTime? dueDateEnd,
   }) {
     final task = Task(
       id: const Uuid().v4(),
@@ -178,11 +187,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       priorityIndex: priority.index,
       notes: notes,
       attachments: attachments,
+      dueDate: dueDate,
+      dueDateEnd: dueDate == null ? null : dueDateEnd,
       workspaceId: _ref.read(settingsProvider).currentWorkspaceId,
     );
     unawaited(_box.put(task.id, task));
     state = [task, ...state];
     _logActivity(task, ActivityKind.taskAdded, 'You added "${task.title}"');
+    if (dueDate != null) {
+      unawaited(NotificationService.instance.scheduleForTask(task));
+    }
     return task;
   }
 
@@ -274,7 +288,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
         ActivityKind.taskCompleted,
         'You completed "${updated.title}"',
       );
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -296,7 +309,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _syncNotificationForCompletionChange(updated);
     if (updated.isChecked && !wasChecked) {
       unawaited(SoundService.instance.playCheckoff());
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -310,52 +322,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     } else if (task.dueDate != null) {
       unawaited(NotificationService.instance.scheduleForTask(task));
     }
-  }
-
-  /// Builds the next occurrence of a just-completed recurring [task] as a
-  /// brand-new task and adds it alongside the completed one, which stays
-  /// as-is as a record of that occurrence. A no-op when [task] doesn't
-  /// recur, or has no due date to anchor the next occurrence's schedule to
-  /// (see [Task.recurrence]'s doc).
-  void _spawnNextOccurrenceIfNeeded(Task task) {
-    final dueDate = task.dueDate;
-    if (task.recurrence == RecurrenceRule.none || dueDate == null) return;
-    final nextDueDate = task.recurrence.next(dueDate);
-    final dueDateEnd = task.dueDateEnd;
-    final next = Task(
-      id: const Uuid().v4(),
-      title: task.title,
-      createdAt: DateTime.now(),
-      notes: task.notes,
-      subtasks: [
-        for (final subtask in task.subtasks)
-          Subtask(id: const Uuid().v4(), title: subtask.title),
-      ],
-      projectId: task.projectId,
-      templateId: task.templateId,
-      dueDate: nextDueDate,
-      dueDateEnd: dueDateEnd == null
-          ? null
-          : nextDueDate.add(dueDateEnd.difference(dueDate)),
-      priorityIndex: task.priorityIndex,
-      attachments: [
-        for (final a in task.attachments)
-          Attachment(name: a.name, size: a.size, path: a.path),
-      ],
-      workspaceId: task.workspaceId,
-      recurrenceIndex: task.recurrenceIndex,
-    );
-    unawaited(_box.put(next.id, next));
-    state = [next, ...state];
-    _sortState();
-    unawaited(NotificationService.instance.scheduleForTask(next));
-    _logActivity(next, ActivityKind.taskAdded, 'You added "${next.title}"');
-  }
-
-  void setTaskRecurrence(String taskId, RecurrenceRule recurrence) {
-    final task = _box.get(taskId);
-    if (task == null) return;
-    _persist(task.copyWith(recurrenceIndex: recurrence.index));
   }
 
   void setTaskNotes(String taskId, String? notes) {
@@ -493,12 +459,14 @@ class TasksNotifier extends StateNotifier<List<Task>> {
   /// current one afterward, same as normal operation.
   void restoreAll(List<Task> tasks) {
     unawaited(NotificationService.instance.cancelAll());
-    unawaited(_box.clear());
-    unawaited(_box.putAll({for (final t in tasks) t.id: t}));
+    unawaited(_replaceBoxContents(tasks));
     final settings = _ref.read(settingsProvider);
-    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
-    state = _box.values
-        .where((t) => t.workspaceId == settings.currentWorkspaceId)
+    final defaultWorkspaceId = settings.workspaceIds.first;
+    state = tasks
+        .where(
+          (t) => (t.workspaceId ?? defaultWorkspaceId) ==
+              settings.currentWorkspaceId,
+        )
         .toList();
     _sortState();
     for (final task in tasks) {
@@ -506,5 +474,22 @@ class TasksNotifier extends StateNotifier<List<Task>> {
         unawaited(NotificationService.instance.scheduleForTask(task));
       }
     }
+  }
+
+  /// Replaces [_box]'s entire contents with [tasks] — used by [restoreAll].
+  /// `clear()` and `putAll()` are each async (the web/IndexedDB backend has
+  /// no synchronous fast path for either), so firing them off unawaited in
+  /// sequence — as every other fire-and-forget write in this class does —
+  /// lets them race: if `clear()`'s own in-memory keystore wipe lands after
+  /// `putAll()`'s, the just-restored tasks are wiped right back out from
+  /// under the box, even though [state] (and so the UI) already reflects
+  /// them. Awaiting `clear()` before starting `putAll()` keeps them in
+  /// order. [state] no longer depends on reading `_box.values` back, so it
+  /// stays correct regardless of how long this takes to land on disk.
+  Future<void> _replaceBoxContents(List<Task> tasks) async {
+    await _box.clear();
+    await _box.putAll({for (final t in tasks) t.id: t});
+    final settings = _ref.read(settingsProvider);
+    _migrateLegacyWorkspaceIds(settings.workspaceIds.first);
   }
 }
