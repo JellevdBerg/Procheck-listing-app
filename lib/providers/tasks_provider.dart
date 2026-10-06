@@ -274,6 +274,7 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     final newValue = !task.isChecked;
     final updated = task.copyWith(
       isChecked: newValue,
+      completedAt: newValue ? DateTime.now() : null,
       subtasks: [
         for (final subtask in task.subtasks)
           subtask.copyWith(isChecked: newValue),
@@ -301,9 +302,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
             ? subtask.copyWith(isChecked: !subtask.isChecked)
             : subtask,
     ];
+    final nowChecked = newSubtasks.every((s) => s.isChecked);
     final updated = task.copyWith(
       subtasks: newSubtasks,
-      isChecked: newSubtasks.every((s) => s.isChecked),
+      isChecked: nowChecked,
+      completedAt: nowChecked ? DateTime.now() : null,
     );
     _persist(updated);
     _syncNotificationForCompletionChange(updated);

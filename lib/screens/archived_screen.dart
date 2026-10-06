@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../providers/projects_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import 'dashboard_screen.dart' show ProjectsOverview;
@@ -78,7 +77,6 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
             projects: archived,
             tasks: _archivedProjectTasks(tasks, archived),
             now: DateTime.now(),
-            workspaceId: '${ref.watch(settingsProvider).currentWorkspaceId}_archive',
             projectsStatLabel: 'Archived projects',
             emptyProjectsMessage: 'No archived projects yet.',
             onOpenProject: widget.onOpenProject,

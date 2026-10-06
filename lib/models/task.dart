@@ -29,6 +29,7 @@ class Task extends HiveObject {
     List<Attachment>? attachments,
     this.workspaceId,
     this.recurrenceIndex = 0,
+    this.completedAt,
   }) : subtasks = subtasks ?? [],
        attachments = attachments ?? [],
        sortOrder = sortOrder ?? createdAt.millisecondsSinceEpoch.toDouble();
@@ -109,6 +110,12 @@ class Task extends HiveObject {
   @HiveField(14, defaultValue: 0)
   int recurrenceIndex;
 
+  /// When this task was last checked off — null while open, and cleared
+  /// back to null if unchecked. Drives the Dashboard's "completed today"
+  /// count; unrelated to [dueDate]/notifications.
+  @HiveField(15)
+  DateTime? completedAt;
+
   TaskPriority get priority => TaskPriority.fromIndex(priorityIndex);
   set priority(TaskPriority value) => priorityIndex = value.index;
 
@@ -125,7 +132,8 @@ class Task extends HiveObject {
   /// selectors (see [operator ==]) can tell an edited task apart from the
   /// unedited one still referenced by whatever watched it before the edit.
   /// Pass `null` explicitly for [notes]/[projectId]/[templateId]/[dueDate]/
-  /// [dueDateEnd]/[workspaceId] to clear them; omit to leave them as-is.
+  /// [dueDateEnd]/[workspaceId]/[completedAt] to clear them; omit to leave
+  /// them as-is.
   Task copyWith({
     String? title,
     bool? isChecked,
@@ -140,6 +148,7 @@ class Task extends HiveObject {
     List<Attachment>? attachments,
     Object? workspaceId = _unset,
     int? recurrenceIndex,
+    Object? completedAt = _unset,
   }) => Task(
     id: id,
     title: title ?? this.title,
@@ -164,6 +173,9 @@ class Task extends HiveObject {
         ? this.workspaceId
         : workspaceId as String?,
     recurrenceIndex: recurrenceIndex ?? this.recurrenceIndex,
+    completedAt: identical(completedAt, _unset)
+        ? this.completedAt
+        : completedAt as DateTime?,
   );
 
   static const _subtaskListEquality = ListEquality<Subtask>();
@@ -185,6 +197,7 @@ class Task extends HiveObject {
       other.priorityIndex == priorityIndex &&
       other.workspaceId == workspaceId &&
       other.recurrenceIndex == recurrenceIndex &&
+      other.completedAt == completedAt &&
       _subtaskListEquality.equals(other.subtasks, subtasks) &&
       _attachmentListEquality.equals(other.attachments, attachments);
 
@@ -203,6 +216,7 @@ class Task extends HiveObject {
     priorityIndex,
     workspaceId,
     recurrenceIndex,
+    completedAt,
     _subtaskListEquality.hash(subtasks),
     _attachmentListEquality.hash(attachments),
   );
@@ -223,6 +237,7 @@ class Task extends HiveObject {
     'attachments': attachments.map((a) => a.toJson()).toList(),
     'workspaceId': workspaceId,
     'recurrenceIndex': recurrenceIndex,
+    'completedAt': completedAt?.toIso8601String(),
   };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -249,5 +264,8 @@ class Task extends HiveObject {
         .toList(),
     workspaceId: json['workspaceId'] as String?,
     recurrenceIndex: json['recurrenceIndex'] as int? ?? 0,
+    completedAt: json['completedAt'] == null
+        ? null
+        : DateTime.parse(json['completedAt'] as String),
   );
 }

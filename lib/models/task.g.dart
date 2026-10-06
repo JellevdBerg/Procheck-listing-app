@@ -33,13 +33,14 @@ class TaskAdapter extends TypeAdapter<Task> {
           fields[11] == null ? [] : (fields[11] as List?)?.cast<Attachment>(),
       workspaceId: fields[12] as String?,
       recurrenceIndex: fields[14] == null ? 0 : fields[14] as int,
+      completedAt: fields[15] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -69,7 +70,9 @@ class TaskAdapter extends TypeAdapter<Task> {
       ..writeByte(12)
       ..write(obj.workspaceId)
       ..writeByte(14)
-      ..write(obj.recurrenceIndex);
+      ..write(obj.recurrenceIndex)
+      ..writeByte(15)
+      ..write(obj.completedAt);
   }
 
   @override

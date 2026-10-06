@@ -54,6 +54,24 @@ void main() {
     expect(() => notifier.deleteTask(task.id), returnsNormally);
   });
 
+  test('toggleTask sets completedAt when checked, clears it when unchecked', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'Water the plants');
+
+    notifier.toggleTask(task.id);
+    final completed = container.read(tasksProvider).firstWhere((t) => t.id == task.id);
+    expect(completed.isChecked, isTrue);
+    expect(completed.completedAt, isNotNull);
+
+    notifier.toggleTask(task.id);
+    final reopened = container.read(tasksProvider).firstWhere((t) => t.id == task.id);
+    expect(reopened.isChecked, isFalse);
+    expect(reopened.completedAt, isNull);
+  });
+
   test('reorderTasks reflects the given order the next time it is read', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

@@ -350,6 +350,46 @@ void main() {
     );
 
     testWidgets(
+      'a task checked off today counts toward Completed today, not toward Overdue',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container
+            .read(projectsProvider.notifier)
+            .addProject('Finisher');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        final task = tasksNotifier.addBlankTask(
+          title: 'Finish this',
+          projectId: project.id,
+        );
+        tasksNotifier.toggleTask(task.id);
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        String statValueFor(String label) {
+          final cardFinder = find
+              .ancestor(of: find.text(label), matching: find.byType(Card))
+              .first;
+          final texts = tester
+              .widgetList<Text>(
+                find.descendant(of: cardFinder, matching: find.byType(Text)),
+              )
+              .toList();
+          return texts.first.data!;
+        }
+
+        expect(statValueFor('Completed today'), '1');
+      },
+    );
+
+    testWidgets(
       'tapping an attention-list task opens its project via onOpenTask',
       (tester) async {
         final container = ProviderContainer();
@@ -430,6 +470,42 @@ void main() {
           openedProjectId,
           container.read(projectsProvider).firstWhere((p) => p.name == 'Table Target').id,
         );
+      },
+    );
+
+    testWidgets(
+      'tapping the PROJECT column header sorts, then reverses, the Projects table',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        container.read(projectsProvider.notifier).addProject('Sortable');
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('PROJECT'), findsOneWidget);
+        expect(find.byIcon(Icons.arrow_upward), findsNothing);
+        expect(find.byIcon(Icons.arrow_downward), findsNothing);
+
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+
+        // A third tap drops back to the default (unsorted) order.
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_upward), findsNothing);
+        expect(find.byIcon(Icons.arrow_downward), findsNothing);
       },
     );
   });
