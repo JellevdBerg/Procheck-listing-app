@@ -4,24 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/project.dart';
 import '../models/task.dart';
 import '../providers/projects_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
-import 'dashboard_screen.dart' show ProjectsOverview;
+import 'dashboard_screen.dart' show ProjectsTableCard, computeProjectSummaries;
 import 'empty_state.dart';
 
-/// Archived projects: the same overview the Dashboard shows (stat row,
-/// Today & Needs Attention, Projects table, Recent Activity) scoped to
-/// archived projects, above a color dot/name/task-count
-/// list with an "Unarchive" ghost button per row. Search filters that list
-/// by name, same as the Projects screen.
+/// Archived projects: how many there are, a search box, and the same
+/// Projects table the Dashboard uses (scoped to archived projects), with an
+/// "Unarchive" action on each row in place of the usual tap-to-open.
 class ArchivedScreen extends ConsumerStatefulWidget {
   const ArchivedScreen({super.key, required this.onOpenProject, required this.onOpenTask});
 
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
-  /// Like [onOpenProject], but for navigating in from a specific task in
-  /// the overview's Today & Needs Attention list.
+  /// Unused now that the table's own row tap is repurposed for Unarchive,
+  /// but kept so callers don't need to change how they construct this screen.
   final void Function(String projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
@@ -42,8 +39,7 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
   @override
   Widget build(BuildContext context) {
     final tasks = ref.watch(tasksProvider);
-    final archived = ref.watch(projectsProvider).where((p) => p.archived).toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final archived = ref.watch(projectsProvider).where((p) => p.archived).toList();
 
     if (archived.isEmpty) {
       return const EmptyState(
@@ -57,31 +53,28 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
         ? archived
         : archived.where((p) => p.name.toLowerCase().contains(query)).toList();
 
-    // Counted once per build rather than once per row — each row scanning
-    // the full task list itself turns this into an O(archived projects ×
-    // tasks) rebuild as either side grows into the hundreds/thousands.
-    final taskCountByProject = <String, int>{};
-    for (final task in tasks) {
-      final projectId = task.projectId;
-      if (projectId == null) continue;
-      taskCountByProject[projectId] = (taskCountByProject[projectId] ?? 0) + 1;
-    }
+    final summaries = computeProjectSummaries(
+      visible,
+      _archivedProjectTasks(tasks, visible),
+      DateTime.now(),
+    );
 
     return Padding(
       padding: const EdgeInsets.all(16.8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Archived', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 16.8),
-          ProjectsOverview(
-            projects: archived,
-            tasks: _archivedProjectTasks(tasks, archived),
-            now: DateTime.now(),
-            projectsStatLabel: 'Archived projects',
-            emptyProjectsMessage: 'No archived projects yet.',
-            onOpenProject: widget.onOpenProject,
-            onOpenTask: widget.onOpenTask,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text('Archived', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(width: 10),
+              Text(
+                '${archived.length} project${archived.length == 1 ? '' : 's'}',
+                style: TextStyle(color: Theme.of(context).hintColor, fontSize: 14),
+              ),
+            ],
           ),
           const SizedBox(height: 16.8),
           TextField(
@@ -90,7 +83,7 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
             decoration: const InputDecoration(hintText: 'Search archived projects'),
           ),
           const SizedBox(height: 16.8),
-          if (visible.isEmpty)
+          if (summaries.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
@@ -99,80 +92,20 @@ class _ArchivedScreenState extends ConsumerState<ArchivedScreen> {
               ),
             )
           else
-            Expanded(
-              child: Card(
-                margin: EdgeInsets.zero,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 11.2),
-                  itemCount: visible.length,
-                  itemBuilder: (context, index) => _ArchivedRow(
-                    project: visible[index],
-                    taskCount: taskCountByProject[visible[index].id] ?? 0,
-                    onOpenProject: widget.onOpenProject,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ArchivedRow extends ConsumerWidget {
-  const _ArchivedRow({
-    required this.project,
-    required this.taskCount,
-    required this.onOpenProject,
-  });
-
-  final Project project;
-  final int taskCount;
-  final void Function(String projectId, BuildContext rowContext) onOpenProject;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final color = accentPalette[project.colorIndex];
-    return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenProject(project.id, rowContext),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          child: Row(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    text: project.name,
-                    style: const TextStyle(fontSize: 14),
-                    children: [
-                      TextSpan(
-                        text: ' ($taskCount task${taskCount == 1 ? '' : 's'})',
-                        style: TextStyle(
-                          color: Theme.of(context).hintColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              NocturneButton(
+            ProjectsTableCard(
+              summaries: summaries,
+              emptyMessage: 'No archived projects yet.',
+              onOpenProject: widget.onOpenProject,
+              trailing: (summary) => NocturneButton(
                 label: 'Unarchive',
                 icon: Icons.restore,
                 variant: NocturneButtonVariant.ghost,
-                onPressed: () =>
-                    ref.read(projectsProvider.notifier).unarchiveProject(project.id),
+                onPressed: () => ref
+                    .read(projectsProvider.notifier)
+                    .unarchiveProject(summary.project.id),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }

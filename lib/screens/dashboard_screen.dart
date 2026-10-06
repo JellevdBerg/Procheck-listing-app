@@ -354,7 +354,7 @@ class ProjectsOverview extends StatelessWidget {
           onOpenTask: onOpenTask,
         ),
         const SizedBox(height: 22.4),
-        _ProjectsTableCard(
+        ProjectsTableCard(
           summaries: summaries,
           emptyMessage: emptyProjectsMessage,
           onOpenProject: onOpenProject,
@@ -709,7 +709,7 @@ class _AttentionRow extends StatelessWidget {
   }
 }
 
-/// Which column [_ProjectsTableCard] is sorted by — null means the
+/// Which column [ProjectsTableCard] is sorted by — null means the
 /// caller's own default order (overdue-first, then most open work first).
 enum _ProjectSortColumn { name, tasks, progress, status }
 
@@ -725,22 +725,28 @@ int _statusRank(ProjectSummary s) {
 /// The per-project table: how much work is open, the completion bar, and a
 /// status badge — ranked overdue-first, then by how much is left open by
 /// default, or by tapping any column header to sort some other way.
-class _ProjectsTableCard extends StatefulWidget {
-  const _ProjectsTableCard({
+class ProjectsTableCard extends StatefulWidget {
+  const ProjectsTableCard({
+    super.key,
     required this.summaries,
     required this.emptyMessage,
     required this.onOpenProject,
+    this.trailing,
   });
 
   final List<ProjectSummary> summaries;
   final String emptyMessage;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
+  /// An optional extra action rendered at the end of each row (e.g. an
+  /// "Unarchive" button on the Archive screen).
+  final Widget Function(ProjectSummary summary)? trailing;
+
   @override
-  State<_ProjectsTableCard> createState() => _ProjectsTableCardState();
+  State<ProjectsTableCard> createState() => _ProjectsTableCardState();
 }
 
-class _ProjectsTableCardState extends State<_ProjectsTableCard> {
+class _ProjectsTableCardState extends State<ProjectsTableCard> {
   _ProjectSortColumn? _sortColumn;
   bool _ascending = true;
 
@@ -843,7 +849,11 @@ class _ProjectsTableCardState extends State<_ProjectsTableCard> {
               ),
               for (var i = 0; i < summaries.length; i++) ...[
                 if (i > 0) const Divider(height: 1),
-                _ProjectsTableRow(summary: summaries[i], onOpenProject: widget.onOpenProject),
+                _ProjectsTableRow(
+                  summary: summaries[i],
+                  onOpenProject: widget.onOpenProject,
+                  trailing: widget.trailing,
+                ),
               ],
             ],
           ],
@@ -853,7 +863,7 @@ class _ProjectsTableCardState extends State<_ProjectsTableCard> {
   }
 }
 
-/// A column header in [_ProjectsTableCard] that sorts the table when tapped,
+/// A column header in [ProjectsTableCard] that sorts the table when tapped,
 /// showing a direction arrow once it's the active sort column.
 class _SortableHeaderCell extends StatelessWidget {
   const _SortableHeaderCell({
@@ -916,10 +926,15 @@ class _SortableHeaderCell extends StatelessWidget {
 }
 
 class _ProjectsTableRow extends StatelessWidget {
-  const _ProjectsTableRow({required this.summary, required this.onOpenProject});
+  const _ProjectsTableRow({
+    required this.summary,
+    required this.onOpenProject,
+    this.trailing,
+  });
 
   final ProjectSummary summary;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
+  final Widget Function(ProjectSummary summary)? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -987,6 +1002,10 @@ class _ProjectsTableRow extends StatelessWidget {
             flex: 2,
             child: Align(alignment: Alignment.centerRight, child: _statusTag(tokens)),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing!(summary),
+          ],
         ],
       ),
     );
