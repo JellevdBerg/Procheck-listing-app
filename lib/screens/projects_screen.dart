@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
 import '../providers/undo_provider.dart';
+import '../theme/nocturne_theme.dart';
 import '../widgets/create_task_sheet.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import '../widgets/pop_out_removal.dart';
@@ -24,10 +27,17 @@ class ProjectsScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onShowUndo,
     required this.onOpenProject,
+    this.highlightTaskId,
   });
 
   final ShowUndo onShowUndo;
   final void Function(String projectId, BuildContext cardContext) onOpenProject;
+
+  /// When set, the matching unfiled task is scrolled into view and briefly
+  /// highlighted — used when navigating in from an unfiled task elsewhere
+  /// in the app (Today, Upcoming, Calendar, the sidebar search, …), which
+  /// have no project of their own to open.
+  final String? highlightTaskId;
 
   @override
   ConsumerState<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -41,10 +51,59 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   final _gridScrollController = ScrollController();
   String _query = '';
 
+  final Map<String, GlobalKey> _unfiledTaskKeys = {};
+  String? _highlightedTaskId;
+  Timer? _highlightTimer;
+  bool _scrolledToHighlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _highlightedTaskId = widget.highlightTaskId;
+    _armHighlightTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProjectsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.highlightTaskId != oldWidget.highlightTaskId) {
+      setState(() {
+        _highlightedTaskId = widget.highlightTaskId;
+        _scrolledToHighlight = false;
+      });
+      _armHighlightTimer();
+    }
+  }
+
+  void _armHighlightTimer() {
+    _highlightTimer?.cancel();
+    if (_highlightedTaskId == null) return;
+    _highlightTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _highlightedTaskId = null);
+    });
+  }
+
+  void _scrollToHighlightIfNeeded() {
+    if (_scrolledToHighlight || widget.highlightTaskId == null) return;
+    final key = _unfiledTaskKeys[widget.highlightTaskId];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final taskContext = key?.currentContext;
+      if (taskContext == null || !mounted) return;
+      Scrollable.ensureVisible(
+        taskContext,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        alignment: 0.5,
+      );
+    });
+    _scrolledToHighlight = true;
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     _gridScrollController.dispose();
+    _highlightTimer?.cancel();
     super.dispose();
   }
 
@@ -57,6 +116,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final tasks = ref.watch(tasksProvider);
     final reduceMotion = ref.watch(settingsProvider).reduceMotion;
     final unfiledTasks = tasks.where((t) => t.projectId == null).toList();
+    _scrollToHighlightIfNeeded();
 
     final query = _query.trim().toLowerCase();
     final projects = query.isEmpty
@@ -173,31 +233,41 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       .read(tasksProvider.notifier)
                       .reorderTasks(reordered.map((t) => t.id).toList());
                 },
-                itemBuilder: (context, i) => PopOutRemoval(
-                  key: ValueKey(unfiledTasks[i].id),
-                  reduceMotion: reduceMotion,
-                  shrinkWidth: false,
-                  onRemoved: () => ref
-                      .read(tasksProvider.notifier)
-                      .deleteTask(unfiledTasks[i].id),
-                  builder: (context, triggerRemoval) => TaskTile(
-                    task: unfiledTasks[i],
-                    onDelete: triggerRemoval,
-                    // deleteTask (triggered by triggerRemoval, just above)
-                    // already pushed this onto the undo stack — routing the
-                    // button through the same stack, rather than a direct
-                    // restoreTask call, keeps this in sync with Ctrl+Z
-                    // instead of risking a stale second restore of a task
-                    // Ctrl+Z already brought back.
-                    onExplicitDelete: () => widget.onShowUndo(
-                      label: '"${unfiledTasks[i].title}" deleted',
-                      onUndo: () =>
-                          ref.read(undoStackProvider.notifier).undoLast(),
+                itemBuilder: (context, i) {
+                  final task = unfiledTasks[i];
+                  final highlighted = task.id == _highlightedTaskId;
+                  return PopOutRemoval(
+                    key: _unfiledTaskKeys.putIfAbsent(task.id, () => GlobalKey()),
+                    reduceMotion: reduceMotion,
+                    shrinkWidth: false,
+                    onRemoved: () =>
+                        ref.read(tasksProvider.notifier).deleteTask(task.id),
+                    builder: (context, triggerRemoval) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      color: highlighted
+                          ? context.nocturneAccent.withValues(alpha: 0.16)
+                          : Colors.transparent,
+                      child: TaskTile(
+                        task: task,
+                        onDelete: triggerRemoval,
+                        // deleteTask (triggered by triggerRemoval, just
+                        // above) already pushed this onto the undo stack —
+                        // routing the button through the same stack, rather
+                        // than a direct restoreTask call, keeps this in
+                        // sync with Ctrl+Z instead of risking a stale
+                        // second restore of a task Ctrl+Z already brought
+                        // back.
+                        onExplicitDelete: () => widget.onShowUndo(
+                          label: '"${task.title}" deleted',
+                          onUndo: () =>
+                              ref.read(undoStackProvider.notifier).undoLast(),
+                        ),
+                        autoRemoveWhenChecked: true,
+                        reorderIndex: i,
+                      ),
                     ),
-                    autoRemoveWhenChecked: true,
-                    reorderIndex: i,
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ),

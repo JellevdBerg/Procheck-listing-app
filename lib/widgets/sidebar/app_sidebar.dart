@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/project.dart';
+import '../../models/task.dart';
 import '../../providers/projects_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/task_templates_provider.dart';
@@ -10,6 +11,7 @@ import '../../screens/app_screen.dart';
 import '../../screens/dashboard_screen.dart';
 import '../../theme/nocturne_theme.dart';
 import '../app_logo.dart';
+import '../project_name_lookup.dart';
 import '../text_prompt_dialog.dart';
 import 'mini_calendar.dart';
 
@@ -23,6 +25,7 @@ class AppSidebar extends ConsumerWidget {
     required this.onScreenSelected,
     required this.onFavoriteProjectTap,
     required this.onDaySelected,
+    required this.onOpenTask,
     required this.calendarMonth,
     required this.selectedDay,
   });
@@ -31,6 +34,11 @@ class AppSidebar extends ConsumerWidget {
   final ValueChanged<AppScreen> onScreenSelected;
   final ValueChanged<Project> onFavoriteProjectTap;
   final ValueChanged<DateTime> onDaySelected;
+
+  /// Opens a task picked from the inline search field — its project,
+  /// scrolled to and highlighting it, or the Projects screen's unfiled
+  /// list when it has no project.
+  final void Function(String? projectId, String taskId) onOpenTask;
   final DateTime calendarMonth;
   final DateTime? selectedDay;
 
@@ -122,13 +130,9 @@ class AppSidebar extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Column(
                       children: [
-                        _NavRow(
-                          icon: Icons.search,
-                          label: 'Search',
+                        _SidebarSearch(
                           expanded: expanded,
-                          active: currentScreen == AppScreen.search,
-                          accent: accent,
-                          onTap: () => onScreenSelected(AppScreen.search),
+                          onOpenTask: onOpenTask,
                         ),
                         const SizedBox(height: 2),
                         _NavRow(
@@ -139,6 +143,15 @@ class AppSidebar extends ConsumerWidget {
                           active: currentScreen == AppScreen.dashboard,
                           accent: accent,
                           onTap: () => onScreenSelected(AppScreen.dashboard),
+                        ),
+                        const SizedBox(height: 2),
+                        _NavRow(
+                          icon: Icons.calendar_month_outlined,
+                          label: 'Calendar',
+                          expanded: expanded,
+                          active: currentScreen == AppScreen.calendar,
+                          accent: accent,
+                          onTap: () => onScreenSelected(AppScreen.calendar),
                         ),
                         const SizedBox(height: 2),
                         _NavRow(
@@ -159,15 +172,6 @@ class AppSidebar extends ConsumerWidget {
                           active: currentScreen == AppScreen.upcoming,
                           accent: accent,
                           onTap: () => onScreenSelected(AppScreen.upcoming),
-                        ),
-                        const SizedBox(height: 2),
-                        _NavRow(
-                          icon: Icons.calendar_month_outlined,
-                          label: 'Calendar',
-                          expanded: expanded,
-                          active: currentScreen == AppScreen.calendar,
-                          accent: accent,
-                          onTap: () => onScreenSelected(AppScreen.calendar),
                         ),
                       ],
                     ),
@@ -483,6 +487,103 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The sidebar's inline search: a type-ahead field that matches tasks by
+/// title or notes (same matching PR #35's dedicated Search page used)
+/// without ever leaving the current screen. Collapsed (icon-only) rail
+/// shows a plain nav row instead — tapping it expands the sidebar so the
+/// field can be used.
+class _SidebarSearch extends ConsumerWidget {
+  const _SidebarSearch({required this.expanded, required this.onOpenTask});
+
+  final bool expanded;
+  final void Function(String? projectId, String taskId) onOpenTask;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = context.nocturne;
+
+    if (!expanded) {
+      return _NavRow(
+        icon: Icons.search,
+        label: 'Search',
+        expanded: expanded,
+        onTap: () =>
+            ref.read(settingsProvider.notifier).setSidebarExpanded(true),
+      );
+    }
+
+    final tasks = ref.watch(tasksProvider);
+    final projectNames = buildProjectNameLookup(ref.watch(projectsProvider));
+
+    return Autocomplete<Task>(
+      optionsBuilder: (TextEditingValue value) {
+        final query = value.text.trim().toLowerCase();
+        if (query.isEmpty) return const Iterable<Task>.empty();
+        return tasks.where(
+          (t) =>
+              t.title.toLowerCase().contains(query) ||
+              (t.notes?.toLowerCase().contains(query) ?? false),
+        );
+      },
+      displayStringForOption: (task) => task.title,
+      onSelected: (task) => onOpenTask(task.projectId, task.id),
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return TextField(
+          controller: controller,
+          focusNode: focusNode,
+          style: TextStyle(fontSize: 14, color: tokens.text),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'Search',
+            hintStyle: TextStyle(fontSize: 14, color: tokens.neutral500),
+            prefixIcon: Icon(Icons.search, size: 17, color: tokens.neutral400),
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        final results = options.toList();
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 6,
+            color: tokens.neutral800,
+            borderRadius: BorderRadius.circular(8),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280, maxWidth: 212),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                shrinkWrap: true,
+                itemCount: results.length,
+                itemBuilder: (context, index) {
+                  final task = results[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: tokens.text),
+                    ),
+                    subtitle: Text(
+                      projectNameFor(projectNames, task.projectId),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: tokens.neutral500),
+                    ),
+                    onTap: () => onSelected(task),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
