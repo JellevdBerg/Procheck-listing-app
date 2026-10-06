@@ -899,16 +899,13 @@ class _SortableHeaderCell extends StatelessWidget {
       size: 13,
       color: color,
     );
-    return Tooltip(
-      message: 'Tap to sort',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: InkWell(
-          onTap: onTap,
-          child: Row(
-            mainAxisAlignment: alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [labelText, const SizedBox(width: 3), icon],
-          ),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          mainAxisAlignment: alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [labelText, const SizedBox(width: 3), icon],
         ),
       ),
     );
