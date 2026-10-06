@@ -723,6 +723,7 @@ class _AttentionRow extends StatelessWidget {
       builder: (rowContext) => Material(
         color: Colors.transparent,
         child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
           mouseCursor: SystemMouseCursors.click,
           hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
           splashColor: context.nocturneAccent.withValues(alpha: 0.18),
@@ -1086,9 +1087,13 @@ class _ProjectsTableRow extends StatelessWidget {
     );
 
     return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenProject(project.id, rowContext),
-        child: content,
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
+          onTap: () => onOpenProject(project.id, rowContext),
+          child: content,
+        ),
       ),
     );
   }

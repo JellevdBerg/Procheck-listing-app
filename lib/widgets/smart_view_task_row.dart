@@ -69,7 +69,7 @@ class SmartViewTaskRow extends ConsumerWidget {
               builder: (rowContext) => Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(NocturneRadius.md),
                   mouseCursor: SystemMouseCursors.click,
                   hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
                   splashColor: context.nocturneAccent.withValues(alpha: 0.18),

@@ -248,9 +248,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                         ref.read(tasksProvider.notifier).deleteTask(task.id),
                     builder: (context, triggerRemoval) => AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      color: highlighted
-                          ? context.nocturneAccent.withValues(alpha: 0.16)
-                          : Colors.transparent,
+                      decoration: BoxDecoration(
+                        color: highlighted
+                            ? context.nocturneAccent.withValues(alpha: 0.16)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(NocturneRadius.md),
+                      ),
                       child: TaskTile(
                         task: task,
                         onDelete: triggerRemoval,

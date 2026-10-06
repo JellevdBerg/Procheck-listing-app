@@ -6,6 +6,7 @@ import '../models/task.dart';
 import '../providers/projects_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
 import '../widgets/nocturne/nocturne_widgets.dart';
 import 'dashboard_screen.dart' show ProjectsOverview;
 import 'empty_state.dart';
@@ -137,43 +138,47 @@ class _ArchivedRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final color = accentPalette[project.colorIndex];
     return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenProject(project.id, rowContext),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          child: Row(
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    text: project.name,
-                    style: const TextStyle(fontSize: 14),
-                    children: [
-                      TextSpan(
-                        text: ' ($taskCount task${taskCount == 1 ? '' : 's'})',
-                        style: TextStyle(
-                          color: Theme.of(context).hintColor,
-                          fontSize: 13,
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
+          onTap: () => onOpenProject(project.id, rowContext),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            child: Row(
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      text: project.name,
+                      style: const TextStyle(fontSize: 14),
+                      children: [
+                        TextSpan(
+                          text: ' ($taskCount task${taskCount == 1 ? '' : 's'})',
+                          style: TextStyle(
+                            color: Theme.of(context).hintColor,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              NocturneButton(
-                label: 'Unarchive',
-                icon: Icons.restore,
-                variant: NocturneButtonVariant.ghost,
-                onPressed: () =>
-                    ref.read(projectsProvider.notifier).unarchiveProject(project.id),
-              ),
-            ],
+                NocturneButton(
+                  label: 'Unarchive',
+                  icon: Icons.restore,
+                  variant: NocturneButtonVariant.ghost,
+                  onPressed: () =>
+                      ref.read(projectsProvider.notifier).unarchiveProject(project.id),
+                ),
+              ],
+            ),
           ),
         ),
       ),
