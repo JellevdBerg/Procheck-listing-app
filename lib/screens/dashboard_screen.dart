@@ -568,6 +568,7 @@ class _AttentionCardState extends State<_AttentionCard> {
     return Card(
       margin: EdgeInsets.zero,
       color: tint,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NocturneRadius.md)),
       child: Padding(
         padding: const EdgeInsets.all(16.8),
         child: Column(
