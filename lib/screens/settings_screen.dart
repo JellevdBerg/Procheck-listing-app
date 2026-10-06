@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/backup_service.dart';
+import '../data/test_data_seed.dart';
 import '../models/shortcut_binding.dart';
 import '../models/task_priority.dart';
 import '../providers/projects_provider.dart';
@@ -357,6 +358,16 @@ class _BackupCard extends ConsumerWidget {
             ),
             const SizedBox(height: 16.8),
             const NocturneSectionLabel(
+              'TESTING',
+              padding: EdgeInsets.only(bottom: 8),
+            ),
+            NocturneButton(
+              label: 'Load test data',
+              icon: Icons.science_outlined,
+              onPressed: () => _confirmLoadTestData(context, ref),
+            ),
+            const SizedBox(height: 16.8),
+            const NocturneSectionLabel(
               'DANGER ZONE',
               padding: EdgeInsets.only(bottom: 8),
             ),
@@ -475,6 +486,31 @@ class _BackupCard extends ConsumerWidget {
         backgroundColor: Theme.of(context).colorScheme.error,
       ),
     );
+  }
+
+  Future<void> _confirmLoadTestData(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Load test data?',
+      message:
+          'This replaces every project and task currently in ProCheck with '
+          'a small dataset for testing (projects, subtasks, due dates, a '
+          'multi-day task, completed items, an archived project, and a few '
+          'recurring tasks). This cannot be undone.',
+      confirmLabel: 'Load test data',
+    );
+    if (!confirmed) return;
+
+    final workspaceId = ref.read(settingsProvider).currentWorkspaceId;
+    final data = buildTestData(workspaceId: workspaceId);
+    ref.read(projectsProvider.notifier).restoreAll(data.projects);
+    ref.read(tasksProvider.notifier).restoreAll(data.tasks);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Test data loaded.')),
+      );
+    }
   }
 
   Future<void> _confirmWipe(BuildContext context, WidgetRef ref) async {
