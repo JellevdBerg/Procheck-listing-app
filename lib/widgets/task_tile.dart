@@ -361,10 +361,9 @@ class ExpandedTaskDetail extends ConsumerWidget {
                     _PriorityRow(task: task),
                   ],
                 ),
-                // Recurrence needs a due date to anchor the next occurrence
-                // to (see Task.recurrenceIndex's doc), so there's nothing
-                // useful to offer until one is set.
-                if (task.dueDate != null) ...[
+                // Recurrence only applies to standalone tasks — see
+                // Task.recurrenceIndex's doc.
+                if (task.projectId == null) ...[
                   const SizedBox(height: 12),
                   _RecurrenceRow(task: task),
                 ],

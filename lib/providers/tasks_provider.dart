@@ -198,10 +198,18 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     );
   }
 
+  /// Recurrence only applies to standalone tasks, so filing a recurring one
+  /// under a project (projectId non-null) clears it rather than leaving a
+  /// dormant setting the project task list has no UI to show or change.
   void moveToProject(String taskId, String? projectId) {
     final task = _box.get(taskId);
     if (task == null) return;
-    _persist(task.copyWith(projectId: projectId));
+    _persist(
+      task.copyWith(
+        projectId: projectId,
+        recurrenceIndex: projectId == null ? null : RecurrenceRule.none.index,
+      ),
+    );
   }
 
   void deleteTask(String taskId) {
@@ -258,6 +266,11 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     final task = _box.get(taskId);
     if (task == null) return;
     final newValue = !task.isChecked;
+    if (newValue && task.recurrence != RecurrenceRule.none) {
+      unawaited(SoundService.instance.playCheckoff());
+      _completeRecurringTask(task);
+      return;
+    }
     final updated = task.copyWith(
       isChecked: newValue,
       subtasks: [
@@ -274,7 +287,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
         ActivityKind.taskCompleted,
         'You completed "${updated.title}"',
       );
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -288,15 +300,17 @@ class TasksNotifier extends StateNotifier<List<Task>> {
             ? subtask.copyWith(isChecked: !subtask.isChecked)
             : subtask,
     ];
-    final updated = task.copyWith(
-      subtasks: newSubtasks,
-      isChecked: newSubtasks.every((s) => s.isChecked),
-    );
+    final completesTask = newSubtasks.every((s) => s.isChecked);
+    if (completesTask && !wasChecked && task.recurrence != RecurrenceRule.none) {
+      unawaited(SoundService.instance.playCheckoff());
+      _completeRecurringTask(task);
+      return;
+    }
+    final updated = task.copyWith(subtasks: newSubtasks, isChecked: completesTask);
     _persist(updated);
     _syncNotificationForCompletionChange(updated);
     if (updated.isChecked && !wasChecked) {
       unawaited(SoundService.instance.playCheckoff());
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -312,16 +326,23 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
   }
 
-  /// Builds the next occurrence of a just-completed recurring [task] as a
-  /// brand-new task and adds it alongside the completed one, which stays
-  /// as-is as a record of that occurrence. A no-op when [task] doesn't
-  /// recur, or has no due date to anchor the next occurrence's schedule to
-  /// (see [Task.recurrence]'s doc).
-  void _spawnNextOccurrenceIfNeeded(Task task) {
+  /// A recurring task isn't "finished and kept around" the way an ordinary
+  /// one is — completing it replaces it outright with its next occurrence,
+  /// so the active lists only ever show one live instance rather than
+  /// accumulating a trail of checked-off copies. [task] is still unchecked
+  /// at this point (the completion that triggered this, not yet persisted).
+  ///
+  /// Recurrence doesn't depend on a due date: when [task] has one, the next
+  /// occurrence's is advanced by [Task.recurrence]'s rule; when it doesn't,
+  /// the next occurrence has none either (the rule still just governs "get
+  /// a fresh unchecked copy on completion", no schedule to anchor).
+  void _completeRecurringTask(Task task) {
+    unawaited(NotificationService.instance.cancelForTask(task));
+    unawaited(_box.delete(task.id));
+
     final dueDate = task.dueDate;
-    if (task.recurrence == RecurrenceRule.none || dueDate == null) return;
-    final nextDueDate = task.recurrence.next(dueDate);
     final dueDateEnd = task.dueDateEnd;
+    final nextDueDate = dueDate == null ? null : task.recurrence.next(dueDate);
     final next = Task(
       id: const Uuid().v4(),
       title: task.title,
@@ -334,9 +355,9 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       projectId: task.projectId,
       templateId: task.templateId,
       dueDate: nextDueDate,
-      dueDateEnd: dueDateEnd == null
+      dueDateEnd: nextDueDate == null || dueDateEnd == null
           ? null
-          : nextDueDate.add(dueDateEnd.difference(dueDate)),
+          : nextDueDate.add(dueDateEnd.difference(dueDate!)),
       priorityIndex: task.priorityIndex,
       attachments: [
         for (final a in task.attachments)
@@ -345,16 +366,19 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       workspaceId: task.workspaceId,
       recurrenceIndex: task.recurrenceIndex,
     );
+    state = [next, for (final t in state) if (t.id != task.id) t];
     unawaited(_box.put(next.id, next));
-    state = [next, ...state];
     _sortState();
-    unawaited(NotificationService.instance.scheduleForTask(next));
-    _logActivity(next, ActivityKind.taskAdded, 'You added "${next.title}"');
+    if (next.dueDate != null) {
+      unawaited(NotificationService.instance.scheduleForTask(next));
+    }
   }
 
+  /// Recurrence only applies to standalone tasks — see [moveToProject],
+  /// which clears it the moment a recurring task is filed under a project.
   void setTaskRecurrence(String taskId, RecurrenceRule recurrence) {
     final task = _box.get(taskId);
-    if (task == null) return;
+    if (task == null || task.projectId != null) return;
     _persist(task.copyWith(recurrenceIndex: recurrence.index));
   }
 

@@ -103,11 +103,11 @@ class Task extends HiveObject {
   String? workspaceId;
 
   /// [RecurrenceRule.index] — stored as a plain int for the same reason as
-  /// [priorityIndex]. Only meaningful alongside [dueDate]: completing a
-  /// recurring task with no due date has no anchor to compute the next
-  /// occurrence from, so the UI only offers a recurrence once a due date is
-  /// set (see TasksNotifier.toggleTask/toggleSubtask, which spawn the next
-  /// occurrence).
+  /// [priorityIndex]. Only offered for standalone tasks (null [projectId]):
+  /// see TasksNotifier.moveToProject, which clears it when a recurring task
+  /// is filed under a project. Completing a recurring task replaces it with
+  /// its next occurrence rather than leaving a finished copy behind — see
+  /// TasksNotifier.toggleTask/toggleSubtask's _completeRecurringTask.
   @HiveField(14, defaultValue: 0)
   int recurrenceIndex;
 

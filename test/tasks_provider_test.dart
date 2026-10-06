@@ -75,31 +75,59 @@ void main() {
     expect(reordered, [a.id, c.id, b.id]);
   });
 
-  test('completing a daily-recurring task spawns the next occurrence', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+  test(
+    'completing a daily-recurring task with a due date replaces it with '
+    'the next occurrence rather than leaving a checked-off copy behind',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
 
-    final notifier = container.read(tasksProvider.notifier);
-    final task = notifier.addBlankTask(title: 'Take vitamins');
-    final due = DateTime(2026, 1, 1, 9, 0);
-    notifier.setTaskDueDate(task.id, due);
-    notifier.setTaskRecurrence(task.id, RecurrenceRule.daily);
+      final notifier = container.read(tasksProvider.notifier);
+      final task = notifier.addBlankTask(title: 'Take vitamins');
+      final due = DateTime(2026, 1, 1, 9, 0);
+      notifier.setTaskDueDate(task.id, due);
+      notifier.setTaskRecurrence(task.id, RecurrenceRule.daily);
 
-    notifier.toggleTask(task.id);
+      notifier.toggleTask(task.id);
 
-    final tasks = container.read(tasksProvider);
-    final completed = tasks.firstWhere((t) => t.id == task.id);
-    expect(completed.isChecked, isTrue);
+      final matches = container
+          .read(tasksProvider)
+          .where((t) => t.title == 'Take vitamins');
+      expect(matches, hasLength(1)); // the completed one is gone, not kept
+      final next = matches.single;
+      expect(next.id, isNot(task.id));
+      expect(next.isChecked, isFalse);
+      expect(next.dueDate, due.add(const Duration(days: 1)));
+      expect(next.recurrence, RecurrenceRule.daily);
+    },
+  );
 
-    final next = tasks.firstWhere(
-      (t) => t.title == 'Take vitamins' && t.id != task.id,
-    );
-    expect(next.isChecked, isFalse);
-    expect(next.dueDate, due.add(const Duration(days: 1)));
-    expect(next.recurrence, RecurrenceRule.daily);
-  });
+  test(
+    'completing a recurring task with no due date still replaces it with '
+    'a fresh unchecked occurrence (recurrence does not require a due date)',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
 
-  test('completing a non-recurring task spawns nothing', () {
+      final notifier = container.read(tasksProvider.notifier);
+      final task = notifier.addBlankTask(title: 'Take out trash');
+      notifier.setTaskRecurrence(task.id, RecurrenceRule.weekly);
+
+      notifier.toggleTask(task.id);
+
+      final matches = container
+          .read(tasksProvider)
+          .where((t) => t.title == 'Take out trash');
+      expect(matches, hasLength(1));
+      final next = matches.single;
+      expect(next.id, isNot(task.id));
+      expect(next.isChecked, isFalse);
+      expect(next.dueDate, isNull);
+      expect(next.recurrence, RecurrenceRule.weekly);
+    },
+  );
+
+  test('completing a non-recurring task leaves it checked, nothing spawned', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -109,32 +137,69 @@ void main() {
 
     notifier.toggleTask(task.id);
 
-    expect(
-      container.read(tasksProvider).where((t) => t.title == 'One-off errand'),
-      hasLength(1),
-    );
+    final matches = container
+        .read(tasksProvider)
+        .where((t) => t.title == 'One-off errand');
+    expect(matches, hasLength(1));
+    expect(matches.single.isChecked, isTrue);
   });
 
-  test('un-completing a recurring task does not spawn another occurrence', () {
+  test(
+    'repeatedly completing a recurring task always leaves exactly one live '
+    'occurrence, never an accumulating trail of finished ones',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(tasksProvider.notifier);
+      final task = notifier.addBlankTask(title: 'Water the plants weekly');
+      notifier.setTaskRecurrence(task.id, RecurrenceRule.weekly);
+      const title = 'Water the plants weekly';
+
+      var current = task;
+      for (var i = 0; i < 3; i++) {
+        notifier.toggleTask(current.id);
+        final matches = container
+            .read(tasksProvider)
+            .where((t) => t.title == title);
+        expect(matches, hasLength(1));
+        current = matches.single;
+        expect(current.isChecked, isFalse);
+      }
+    },
+  );
+
+  test('setTaskRecurrence is a no-op for a task filed under a project', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
     final notifier = container.read(tasksProvider.notifier);
-    final task = notifier.addBlankTask(title: 'Water the plants weekly');
-    notifier.setTaskDueDate(task.id, DateTime.now().add(const Duration(days: 1)));
-    notifier.setTaskRecurrence(task.id, RecurrenceRule.weekly);
-    const title = 'Water the plants weekly';
-
-    notifier.toggleTask(task.id); // complete -> spawns next occurrence
-    expect(
-      container.read(tasksProvider).where((t) => t.title == title),
-      hasLength(2),
+    final task = notifier.addBlankTask(
+      title: 'Project task',
+      projectId: 'some-project',
     );
 
-    notifier.toggleTask(task.id); // un-complete the original
+    notifier.setTaskRecurrence(task.id, RecurrenceRule.daily);
+
     expect(
-      container.read(tasksProvider).where((t) => t.title == title),
-      hasLength(2),
+      container.read(tasksProvider).firstWhere((t) => t.id == task.id).recurrence,
+      RecurrenceRule.none,
+    );
+  });
+
+  test('moveToProject clears recurrence when filing a recurring task', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tasksProvider.notifier);
+    final task = notifier.addBlankTask(title: 'Standalone, then filed');
+    notifier.setTaskRecurrence(task.id, RecurrenceRule.monthly);
+
+    notifier.moveToProject(task.id, 'some-project');
+
+    expect(
+      container.read(tasksProvider).firstWhere((t) => t.id == task.id).recurrence,
+      RecurrenceRule.none,
     );
   });
 
