@@ -508,5 +508,74 @@ void main() {
         expect(find.byIcon(Icons.arrow_downward), findsNothing);
       },
     );
+
+    testWidgets(
+      'the PROJECT and PROGRESS headers always show a sort icon, even unsorted',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        container.read(projectsProvider.notifier).addProject('AnyProject');
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // One per sortable column (PROJECT, PROGRESS) — the whole point is
+        // that the sort affordance is visible before anyone taps anything.
+        expect(find.byIcon(Icons.unfold_more), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'tapping Overdue flashes the Attention card even when already visible',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container
+            .read(projectsProvider.notifier)
+            .addProject('Flasher');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        final overdue = tasksNotifier.addBlankTask(
+          title: 'Overdue in Flasher',
+          projectId: project.id,
+        );
+        tasksNotifier.setTaskDueDate(
+          overdue.id,
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        Card attentionCard() => tester.widget<Card>(
+          find
+              .ancestor(
+                of: find.text('Today & Needs Attention'),
+                matching: find.byType(Card),
+              )
+              .first,
+        );
+
+        expect(attentionCard().color, isNull);
+
+        await tester.tap(find.text('Overdue').first);
+        await tester.pump();
+        expect(attentionCard().color, isNotNull);
+
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(attentionCard().color, isNull);
+      },
+    );
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -319,7 +321,7 @@ class ProjectsOverview extends StatelessWidget {
     final projectById = {for (final project in projects) project.id: project};
     final summaries = computeProjectSummaries(projects, tasks, now);
     final activityFeed = _buildActivityFeed(projects);
-    final attentionKey = GlobalKey();
+    final attentionKey = GlobalKey<_AttentionCardState>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,11 +336,14 @@ class ProjectsOverview extends StatelessWidget {
           completedToday: completedToday,
           onOverdueTap: overdueBucket == 0
               ? null
-              : () => Scrollable.ensureVisible(
-                  attentionKey.currentContext!,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                ),
+              : () {
+                  attentionKey.currentState?.flash();
+                  Scrollable.ensureVisible(
+                    attentionKey.currentContext!,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                  );
+                },
         ),
         const SizedBox(height: 22.4),
         _AttentionCard(
@@ -505,8 +510,10 @@ class _StatCard extends StatelessWidget {
 }
 
 /// The merged overdue + due-today list, each row opening straight to that
-/// task (scrolled to and highlighted) via [onOpenTask].
-class _AttentionCard extends StatelessWidget {
+/// task (scrolled to and highlighted) via [onOpenTask]. The card itself can
+/// be flashed via [flash] — called from the Overdue stat tile, since
+/// scrolling alone is invisible when this card is already on screen.
+class _AttentionCard extends StatefulWidget {
   const _AttentionCard({
     super.key,
     required this.tasks,
@@ -530,14 +537,47 @@ class _AttentionCard extends StatelessWidget {
   static const _maxVisibleRows = 20;
 
   @override
+  State<_AttentionCard> createState() => _AttentionCardState();
+}
+
+class _AttentionCardState extends State<_AttentionCard> {
+  bool _flashing = false;
+  Timer? _timer;
+
+  /// Briefly tints the card so a tap that scrolls here still reads as
+  /// having done something, even when the card was already on screen.
+  void flash() {
+    _timer?.cancel();
+    setState(() => _flashing = true);
+    _timer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _flashing = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final visibleTasks = tasks.length > _maxVisibleRows
-        ? tasks.sublist(0, _maxVisibleRows)
+    final tasks = widget.tasks;
+    final projectById = widget.projectById;
+    final now = widget.now;
+    final onOpenTask = widget.onOpenTask;
+    final visibleTasks = tasks.length > _AttentionCard._maxVisibleRows
+        ? tasks.sublist(0, _AttentionCard._maxVisibleRows)
         : tasks;
     final hiddenCount = tasks.length - visibleTasks.length;
+    final tokens = context.nocturne;
+    final tint = _flashing
+        ? Color.alphaBlend(context.nocturneAccent.withValues(alpha: 0.18), tokens.surface)
+        : null;
 
     return Card(
       margin: EdgeInsets.zero,
+      color: tint,
       child: Padding(
         padding: const EdgeInsets.all(16.8),
         child: Column(
@@ -816,22 +856,36 @@ class _SortableHeaderCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.nocturne;
-    final color = active ? tokens.neutral300 : tokens.neutral500;
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: TextStyle(fontSize: 11, color: color, letterSpacing: 0.06)),
-          if (active) ...[
-            const SizedBox(width: 2),
-            Icon(
-              ascending ? Icons.arrow_upward : Icons.arrow_downward,
-              size: 12,
-              color: color,
-            ),
-          ],
-        ],
+    final color = active ? context.nocturneAccent : tokens.neutral500;
+    return Tooltip(
+      message: 'Tap to sort',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  letterSpacing: 0.06,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 3),
+              Icon(
+                active
+                    ? (ascending ? Icons.arrow_upward : Icons.arrow_downward)
+                    : Icons.unfold_more,
+                size: 13,
+                color: color,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
