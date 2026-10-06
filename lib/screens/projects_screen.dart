@@ -85,9 +85,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   void _scrollToHighlightIfNeeded() {
     if (_scrolledToHighlight || widget.highlightTaskId == null) return;
-    final key = _unfiledTaskKeys[widget.highlightTaskId];
+    // The lookup has to happen *inside* the callback, not before it's
+    // scheduled: on a freshly-created state the unfiled list's itemBuilder
+    // (which populates _unfiledTaskKeys) hasn't run yet at this point in
+    // build(), so capturing the key now would always capture null.
+    final highlightTaskId = widget.highlightTaskId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final taskContext = key?.currentContext;
+      final taskContext = _unfiledTaskKeys[highlightTaskId]?.currentContext;
       if (taskContext == null || !mounted) return;
       Scrollable.ensureVisible(
         taskContext,
