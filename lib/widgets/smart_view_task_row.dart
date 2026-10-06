@@ -66,9 +66,23 @@ class SmartViewTaskRow extends ConsumerWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Builder(
-              builder: (rowContext) => InkWell(
-                onTap: () => onOpenTask(task.projectId, task.id, rowContext),
-                child: titleAndProject,
+              builder: (rowContext) => Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  mouseCursor: SystemMouseCursors.click,
+                  hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
+                  splashColor: context.nocturneAccent.withValues(alpha: 0.18),
+                  highlightColor: context.nocturneAccent.withValues(alpha: 0.18),
+                  onTap: () => onOpenTask(task.projectId, task.id, rowContext),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
+                    child: titleAndProject,
+                  ),
+                ),
               ),
             ),
           ),
