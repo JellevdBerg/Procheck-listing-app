@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/recurrence_rule.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
@@ -195,14 +194,6 @@ class _TaskTileState extends ConsumerState<TaskTile> {
                 ),
                 const SizedBox(width: 6),
               ],
-              if (task.recurrence != RecurrenceRule.none) ...[
-                Icon(
-                  Icons.repeat,
-                  size: 16,
-                  color: Theme.of(context).hintColor,
-                ),
-                const SizedBox(width: 6),
-              ],
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
@@ -351,23 +342,11 @@ class ExpandedTaskDetail extends ConsumerWidget {
 
           final topRow = Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(child: _DueDateRow(task: task)),
-                    const SizedBox(width: 16),
-                    _PriorityRow(task: task),
-                  ],
-                ),
-                // Recurrence needs a due date to anchor the next occurrence
-                // to (see Task.recurrenceIndex's doc), so there's nothing
-                // useful to offer until one is set.
-                if (task.dueDate != null) ...[
-                  const SizedBox(height: 12),
-                  _RecurrenceRow(task: task),
-                ],
+                Expanded(child: _DueDateRow(task: task)),
+                const SizedBox(width: 16),
+                _PriorityRow(task: task),
               ],
             ),
           );
@@ -613,40 +592,6 @@ class _PriorityRow extends ConsumerWidget {
       labelBuilder: (p) => p.label,
       onChanged: (p) =>
           ref.read(tasksProvider.notifier).setTaskPriority(task.id, p),
-    );
-  }
-}
-
-class _RecurrenceRow extends ConsumerWidget {
-  const _RecurrenceRow({required this.task});
-
-  final Task task;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(Icons.repeat, size: 18, color: theme.hintColor),
-        const SizedBox(width: 8),
-        Expanded(
-          child: DropdownButton<RecurrenceRule>(
-            value: task.recurrence,
-            isExpanded: true,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final rule in RecurrenceRule.values)
-                DropdownMenuItem(value: rule, child: Text(rule.label)),
-            ],
-            onChanged: (rule) {
-              if (rule == null) return;
-              ref
-                  .read(tasksProvider.notifier)
-                  .setTaskRecurrence(task.id, rule);
-            },
-          ),
-        ),
-      ],
     );
   }
 }
