@@ -9,7 +9,6 @@ import '../data/notification_service.dart';
 import '../data/sound_service.dart';
 import '../models/activity_entry.dart';
 import '../models/attachment.dart';
-import '../models/recurrence_rule.dart';
 import '../models/subtask.dart';
 import '../models/task.dart';
 import '../models/task_priority.dart';
@@ -274,7 +273,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
         ActivityKind.taskCompleted,
         'You completed "${updated.title}"',
       );
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -296,7 +294,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     _syncNotificationForCompletionChange(updated);
     if (updated.isChecked && !wasChecked) {
       unawaited(SoundService.instance.playCheckoff());
-      _spawnNextOccurrenceIfNeeded(updated);
     }
   }
 
@@ -310,52 +307,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     } else if (task.dueDate != null) {
       unawaited(NotificationService.instance.scheduleForTask(task));
     }
-  }
-
-  /// Builds the next occurrence of a just-completed recurring [task] as a
-  /// brand-new task and adds it alongside the completed one, which stays
-  /// as-is as a record of that occurrence. A no-op when [task] doesn't
-  /// recur, or has no due date to anchor the next occurrence's schedule to
-  /// (see [Task.recurrence]'s doc).
-  void _spawnNextOccurrenceIfNeeded(Task task) {
-    final dueDate = task.dueDate;
-    if (task.recurrence == RecurrenceRule.none || dueDate == null) return;
-    final nextDueDate = task.recurrence.next(dueDate);
-    final dueDateEnd = task.dueDateEnd;
-    final next = Task(
-      id: const Uuid().v4(),
-      title: task.title,
-      createdAt: DateTime.now(),
-      notes: task.notes,
-      subtasks: [
-        for (final subtask in task.subtasks)
-          Subtask(id: const Uuid().v4(), title: subtask.title),
-      ],
-      projectId: task.projectId,
-      templateId: task.templateId,
-      dueDate: nextDueDate,
-      dueDateEnd: dueDateEnd == null
-          ? null
-          : nextDueDate.add(dueDateEnd.difference(dueDate)),
-      priorityIndex: task.priorityIndex,
-      attachments: [
-        for (final a in task.attachments)
-          Attachment(name: a.name, size: a.size, path: a.path),
-      ],
-      workspaceId: task.workspaceId,
-      recurrenceIndex: task.recurrenceIndex,
-    );
-    unawaited(_box.put(next.id, next));
-    state = [next, ...state];
-    _sortState();
-    unawaited(NotificationService.instance.scheduleForTask(next));
-    _logActivity(next, ActivityKind.taskAdded, 'You added "${next.title}"');
-  }
-
-  void setTaskRecurrence(String taskId, RecurrenceRule recurrence) {
-    final task = _box.get(taskId);
-    if (task == null) return;
-    _persist(task.copyWith(recurrenceIndex: recurrence.index));
   }
 
   void setTaskNotes(String taskId, String? notes) {
