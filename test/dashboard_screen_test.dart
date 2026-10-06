@@ -335,7 +335,6 @@ void main() {
           return texts.first.data!;
         }
 
-        expect(statValueFor('Active projects'), '1');
         expect(statValueFor('Overdue'), '1');
 
         expect(find.text('Shelved'), findsNothing);

@@ -158,7 +158,6 @@ class DashboardScreen extends ConsumerWidget {
                 projects: activeProjects,
                 tasks: relevantTasks,
                 now: now,
-                projectsStatLabel: 'Active projects',
                 emptyProjectsMessage: 'No active projects yet.',
                 onOpenProject: onOpenProject,
                 onOpenTask: onOpenTask,
@@ -263,7 +262,6 @@ class ProjectsOverview extends StatelessWidget {
     required this.projects,
     required this.tasks,
     required this.now,
-    required this.projectsStatLabel,
     required this.emptyProjectsMessage,
     required this.onOpenProject,
     required this.onOpenTask,
@@ -273,7 +271,6 @@ class ProjectsOverview extends StatelessWidget {
   final List<Task> tasks;
   final DateTime now;
 
-  final String projectsStatLabel;
   final String emptyProjectsMessage;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
   final void Function(String projectId, String taskId, BuildContext rowContext)
@@ -327,8 +324,6 @@ class ProjectsOverview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _StatRow(
-          projectsLabel: projectsStatLabel,
-          projectsCount: projects.length,
           overdueCount: overdueBucket,
           dueThisWeekCount: dueThisWeekTasks.length,
           highPriorityDueThisWeek: highPriorityDueThisWeek,
@@ -382,13 +377,11 @@ class _ActivityFeedItem {
   final Project project;
 }
 
-/// The top-line stat cards: active/archived project count, overdue (tap to
+/// The top-line stat cards: how many were completed today, overdue (tap to
 /// jump to Today & Needs Attention), due this week (+ how many of those are
-/// high priority), overall completion, and how many were completed today.
+/// high priority), and overall completion.
 class _StatRow extends StatelessWidget {
   const _StatRow({
-    required this.projectsLabel,
-    required this.projectsCount,
     required this.overdueCount,
     required this.dueThisWeekCount,
     required this.highPriorityDueThisWeek,
@@ -397,8 +390,6 @@ class _StatRow extends StatelessWidget {
     required this.onOverdueTap,
   });
 
-  final String projectsLabel;
-  final int projectsCount;
   final int overdueCount;
   final int dueThisWeekCount;
   final int highPriorityDueThisWeek;
@@ -409,7 +400,11 @@ class _StatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cards = [
-      _StatCard(value: '$projectsCount', label: projectsLabel),
+      _StatCard(
+        value: '$completedToday',
+        label: 'Completed today',
+        valueColor: NocturneStatus.done,
+      ),
       _StatCard(
         value: '$overdueCount',
         label: 'Overdue',
@@ -427,11 +422,6 @@ class _StatRow extends StatelessWidget {
         value: '${overallProgress.round()}%',
         label: 'Overall progress',
         valueColor: context.nocturneAccent,
-      ),
-      _StatCard(
-        value: '$completedToday',
-        label: 'Completed today',
-        valueColor: NocturneStatus.done,
       ),
     ];
 
