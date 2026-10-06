@@ -11,7 +11,7 @@ import 'dashboard_screen.dart' show ProjectsOverview;
 import 'empty_state.dart';
 
 /// Archived projects: the same overview the Dashboard shows (stat row,
-/// Today & Needs Attention, Task Status, Workload, Projects table, Recent
+/// Today & Needs Attention, Task Status, Projects table, Recent
 /// Activity) scoped to archived projects, above a color dot/name/task-count
 /// list with an "Unarchive" ghost button per row. Search filters that list
 /// by name, same as the Projects screen.

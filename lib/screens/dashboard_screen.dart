@@ -253,7 +253,7 @@ class _CardHeader extends StatelessWidget {
 }
 
 /// Everything below the page's own title: the stat row, Today & Needs
-/// Attention, Task Status + Workload, the Projects table, and Recent
+/// Attention, Task Status, the Projects table, and Recent
 /// Activity — shared between the Dashboard (active projects) and the
 /// Archive screen's mini-dashboard (archived projects), so [projects] and
 /// [tasks] are whatever scope the caller wants ([tasks] should already be
@@ -354,39 +354,10 @@ class ProjectsOverview extends StatelessWidget {
           onOpenTask: onOpenTask,
         ),
         const SizedBox(height: 22.4),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final taskStatus = _TaskStatusCard(
-              active: activeBucket,
-              overdue: overdueBucket,
-              upcoming: upcomingBucket,
-            );
-            final workload = _WorkloadCard(
-              overdueCount: overdueBucket,
-              dueTodayCount: dueTodayTasks.length,
-              dueThisWeekCount: dueThisWeekTasks.length,
-            );
-            if (constraints.maxWidth < 560) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  taskStatus,
-                  const SizedBox(height: 22.4),
-                  workload,
-                ],
-              );
-            }
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: taskStatus),
-                  const SizedBox(width: 11.2),
-                  Expanded(child: workload),
-                ],
-              ),
-            );
-          },
+        _TaskStatusCard(
+          active: activeBucket,
+          overdue: overdueBucket,
+          upcoming: upcomingBucket,
         ),
         const SizedBox(height: 22.4),
         _ProjectsTableCard(
@@ -842,79 +813,6 @@ class _LegendChip extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(text, style: TextStyle(fontSize: 12, color: tokens.neutral300)),
-      ],
-    );
-  }
-}
-
-class _WorkloadCard extends StatelessWidget {
-  const _WorkloadCard({
-    required this.overdueCount,
-    required this.dueTodayCount,
-    required this.dueThisWeekCount,
-  });
-
-  final int overdueCount;
-  final int dueTodayCount;
-  final int dueThisWeekCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16.8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _CardHeader(icon: Icons.assignment_outlined, label: 'Workload'),
-            const SizedBox(height: 14),
-            _WorkloadRow(
-              label: 'Overdue',
-              value: overdueCount,
-              color: NocturnePriority.high,
-            ),
-            const SizedBox(height: 10),
-            _WorkloadRow(
-              label: 'Due today',
-              value: dueTodayCount,
-              color: NocturnePriority.med,
-            ),
-            const SizedBox(height: 10),
-            _WorkloadRow(
-              label: 'Due this week',
-              value: dueThisWeekCount,
-              color: NocturnePriority.med,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkloadRow extends StatelessWidget {
-  const _WorkloadRow({required this.label, required this.value, required this.color});
-
-  final String label;
-  final int value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13, color: tokens.neutral300),
-          ),
-        ),
-        Text(
-          '$value',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color),
-        ),
       ],
     );
   }
