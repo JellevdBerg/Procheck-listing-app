@@ -154,20 +154,18 @@ const _uuid = Uuid();
     // Standalone tasks
     Task(
       id: _uuid.v4(),
-      title: 'Daily stretch routine',
+      title: 'Morning stretch routine',
       createdAt: at(-20),
       dueDate: at(0, 7),
-      recurrenceIndex: 1, // daily
       notes: '5 minutes, right after waking up.',
       priorityIndex: TaskPriority.low.index,
       workspaceId: workspaceId,
     ),
     Task(
       id: _uuid.v4(),
-      title: 'Weekly team sync',
+      title: 'Team sync',
       createdAt: at(-14),
       dueDate: at(0, 14),
-      recurrenceIndex: 2, // weekly
       workspaceId: workspaceId,
     ),
     Task(
@@ -175,7 +173,6 @@ const _uuid = Uuid();
       title: 'Pay rent',
       createdAt: at(-30),
       dueDate: at(2, 9),
-      recurrenceIndex: 4, // monthly
       priorityIndex: TaskPriority.med.index,
       workspaceId: workspaceId,
     ),

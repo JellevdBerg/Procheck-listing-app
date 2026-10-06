@@ -495,8 +495,8 @@ class _BackupCard extends ConsumerWidget {
       message:
           'This replaces every project and task currently in ProCheck with '
           'a small dataset for testing (projects, subtasks, due dates, a '
-          'multi-day task, completed items, an archived project, and a few '
-          'recurring tasks). This cannot be undone.',
+          'multi-day task, completed items, and an archived project). '
+          'This cannot be undone.',
       confirmLabel: 'Load test data',
     );
     if (!confirmed) return;
