@@ -501,18 +501,34 @@ class _DueDateRow extends ConsumerWidget {
               ? TextButton(
                   onPressed: () => _pickDueDate(context, ref),
                   style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     alignment: Alignment.centerLeft,
                   ),
                   child: const Text('Set due date'),
                 )
-              : InkWell(
-                  onTap: () => _pickDueDate(context, ref),
-                  child: Text(
-                    'Due ${formatDueLabel(task, dateFormat)}',
-                    style: TextStyle(
-                      color: isOverdue ? theme.colorScheme.error : null,
-                      fontWeight: isOverdue ? FontWeight.w600 : null,
+              : Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(NocturneRadius.md),
+                    hoverColor: context.nocturneHoverColor,
+                    splashColor: context.nocturneSplashColor,
+                    highlightColor: context.nocturneSplashColor,
+                    onTap: () => _pickDueDate(context, ref),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        'Due ${formatDueLabel(task, dateFormat)}',
+                        style: TextStyle(
+                          color: isOverdue ? theme.colorScheme.error : null,
+                          fontWeight: isOverdue ? FontWeight.w600 : null,
+                        ),
+                      ),
                     ),
                   ),
                 ),
