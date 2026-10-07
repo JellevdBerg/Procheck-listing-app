@@ -142,6 +142,10 @@ class _ArchivedRow extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(NocturneRadius.md),
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
           onTap: () => onOpenProject(project.id, rowContext),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 11),

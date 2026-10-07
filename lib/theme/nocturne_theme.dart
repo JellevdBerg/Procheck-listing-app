@@ -293,4 +293,13 @@ extension NocturneThemeContext on BuildContext {
       Theme.of(this).extension<NocturneThemeExtension>()!.tokens;
   Color get nocturneAccent =>
       Theme.of(this).extension<NocturneThemeExtension>()!.accent;
+
+  /// The one hover/press tint every interactive surface in the app should
+  /// use — a translucent wash of the current theme accent — so hovering
+  /// anything reads as the same design system no matter which screen it's
+  /// on. Pair with [nocturneSplashColor] on an InkWell's hoverColor/
+  /// splashColor/highlightColor, and [NocturneRadius.md] for its
+  /// borderRadius (matching Card's own radius).
+  Color get nocturneHoverColor => nocturneAccent.withValues(alpha: 0.12);
+  Color get nocturneSplashColor => nocturneAccent.withValues(alpha: 0.18);
 }

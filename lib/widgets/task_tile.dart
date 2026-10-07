@@ -7,6 +7,7 @@ import '../models/task.dart';
 import '../models/task_priority.dart';
 import '../providers/settings_provider.dart';
 import '../providers/tasks_provider.dart';
+import '../theme/nocturne_theme.dart';
 import 'attachments_editor.dart';
 import 'due_date_calendar_dialog.dart';
 import 'nocturne/nocturne_widgets.dart';
@@ -154,6 +155,12 @@ class _TaskTileState extends ConsumerState<TaskTile> {
     return Column(
       children: [
         ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(NocturneRadius.md),
+          ),
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
           onTap: () => _setExpanded(!_effectiveExpanded),
           leading: WobbleCheckbox(
             value: task.isChecked,
@@ -523,11 +530,10 @@ class _DueDateRow extends ConsumerWidget {
   }
 
   /// One calendar for both a single due date and a date range — see
-  /// [showDueDateCalendarDialog]. A range needs no time (it's about which
-  /// days are covered, not a moment), so only a single-day pick goes on to
-  /// ask for a time, and even then answering is optional: dismissing that
-  /// step leaves the task with no specific time rather than abandoning the
-  /// date that was just picked.
+  /// [showDueDateCalendarDialog]. Due dates are date-only now (no time
+  /// step), so picking either just sets the date straight away; an
+  /// existing explicit time (set before that functionality was removed)
+  /// is preserved rather than silently dropped when its date is changed.
   Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
     final selection = await showDueDateCalendarDialog(
       context,
@@ -536,16 +542,17 @@ class _DueDateRow extends ConsumerWidget {
     );
     if (selection == null || !context.mounted) return;
 
+    final previousTime = task.dueDate;
+    final keepsTime = previousTime != null && _hasExplicitTime(previousTime);
+    final start = DateTime(
+      selection.start.year,
+      selection.start.month,
+      selection.start.day,
+      keepsTime ? previousTime.hour : _noTimeHour,
+      keepsTime ? previousTime.minute : _noTimeMinute,
+    );
+
     if (selection.end != null) {
-      final previousTime = task.dueDate;
-      final keepsTime = previousTime != null && _hasExplicitTime(previousTime);
-      final start = DateTime(
-        selection.start.year,
-        selection.start.month,
-        selection.start.day,
-        keepsTime ? previousTime.hour : _noTimeHour,
-        keepsTime ? previousTime.minute : _noTimeMinute,
-      );
       final end = DateTime(
         selection.end!.year,
         selection.end!.month,
@@ -559,23 +566,7 @@ class _DueDateRow extends ConsumerWidget {
       return;
     }
 
-    final initialTime = task.dueDate != null && _hasExplicitTime(task.dueDate!)
-        ? TimeOfDay.fromDateTime(task.dueDate!)
-        : const TimeOfDay(hour: _noTimeHour, minute: _noTimeMinute);
-    final time = await showTimePicker(
-      context: context,
-      initialTime: initialTime,
-    );
-    if (!context.mounted) return;
-
-    final dueDate = DateTime(
-      selection.start.year,
-      selection.start.month,
-      selection.start.day,
-      time?.hour ?? _noTimeHour,
-      time?.minute ?? _noTimeMinute,
-    );
-    ref.read(tasksProvider.notifier).setTaskDueDate(task.id, dueDate);
+    ref.read(tasksProvider.notifier).setTaskDueDate(task.id, start);
   }
 }
 

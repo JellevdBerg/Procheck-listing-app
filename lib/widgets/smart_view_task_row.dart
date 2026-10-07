@@ -35,6 +35,10 @@ class SmartViewTaskRow extends ConsumerWidget {
     final tokens = context.nocturne;
     final dateFormat = ref.watch(settingsProvider).dateFormat;
     final priorityTag = NocturneTag.forPriority(task.priority);
+    final isOverdue =
+        task.dueDate != null &&
+        !task.isChecked &&
+        task.dueDate!.isBefore(DateTime.now());
     final titleAndProject = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -64,6 +68,11 @@ class SmartViewTaskRow extends ConsumerWidget {
                 ref.read(tasksProvider.notifier).toggleTask(task.id),
           ),
           const SizedBox(width: 8),
+          // The hover/press highlight wraps the title, project, priority
+          // tag and due tag together — not just the title — so it spans
+          // the entire available width of the task, same as the rest of
+          // the row's content, rather than stopping short at the edge of
+          // the tags.
           Expanded(
             child: Builder(
               builder: (rowContext) => Material(
@@ -71,30 +80,40 @@ class SmartViewTaskRow extends ConsumerWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(NocturneRadius.md),
                   mouseCursor: SystemMouseCursors.click,
-                  hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
-                  splashColor: context.nocturneAccent.withValues(alpha: 0.18),
-                  highlightColor: context.nocturneAccent.withValues(alpha: 0.18),
+                  hoverColor: context.nocturneHoverColor,
+                  splashColor: context.nocturneSplashColor,
+                  highlightColor: context.nocturneSplashColor,
                   onTap: () => onOpenTask(task.projectId, task.id, rowContext),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 4,
+                      horizontal: 10,
+                      vertical: 6,
                     ),
-                    child: titleAndProject,
+                    child: Row(
+                      children: [
+                        Expanded(child: titleAndProject),
+                        // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
+                        if (priorityTag != null) priorityTag,
+                        if (task.priority != TaskPriority.none)
+                          const SizedBox(width: 6),
+                        if (task.dueDate != null)
+                          NocturneTag(
+                            label: formatDueDate(task.dueDate!, dateFormat),
+                            icon: Icons.access_time,
+                            outline: true,
+                            // Neutral, not the Appearance accent — matches
+                            // the Projects folder's own due-date styling.
+                            color: isOverdue
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).hintColor,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
-          if (priorityTag != null) priorityTag,
-          if (task.priority != TaskPriority.none) const SizedBox(width: 6),
-          if (task.dueDate != null)
-            NocturneTag(
-              label: formatDueDate(task.dueDate!, dateFormat),
-              icon: Icons.access_time,
-              outline: true,
-            ),
         ],
       ),
     );

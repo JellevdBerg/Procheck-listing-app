@@ -725,9 +725,9 @@ class _AttentionRow extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(NocturneRadius.md),
           mouseCursor: SystemMouseCursors.click,
-          hoverColor: context.nocturneAccent.withValues(alpha: 0.12),
-          splashColor: context.nocturneAccent.withValues(alpha: 0.18),
-          highlightColor: context.nocturneAccent.withValues(alpha: 0.18),
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
           onTap: () => onOpenTask(project?.id, task.id, rowContext),
           child: content,
         ),
@@ -1091,6 +1091,10 @@ class _ProjectsTableRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(NocturneRadius.md),
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
           onTap: () => onOpenProject(project.id, rowContext),
           child: content,
         ),
