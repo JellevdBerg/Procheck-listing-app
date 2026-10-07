@@ -57,64 +57,52 @@ class SmartViewTaskRow extends ConsumerWidget {
         ),
       ],
     );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          WobbleCheckbox(
-            value: task.isChecked,
-            reduceMotion: reduceMotion,
-            onChanged: (_) =>
-                ref.read(tasksProvider.notifier).toggleTask(task.id),
-          ),
-          const SizedBox(width: 8),
-          // The hover/press highlight wraps the title, project, priority
-          // tag and due tag together — not just the title — so it spans
-          // the entire available width of the task, same as the rest of
-          // the row's content, rather than stopping short at the edge of
-          // the tags.
-          Expanded(
-            child: Builder(
-              builder: (rowContext) => Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(NocturneRadius.md),
-                  mouseCursor: SystemMouseCursors.click,
-                  hoverColor: context.nocturneHoverColor,
-                  splashColor: context.nocturneSplashColor,
-                  highlightColor: context.nocturneSplashColor,
-                  onTap: () => onOpenTask(task.projectId, task.id, rowContext),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(child: titleAndProject),
-                        // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
-                        if (priorityTag != null) priorityTag,
-                        if (task.priority != TaskPriority.none)
-                          const SizedBox(width: 6),
-                        if (task.dueDate != null)
-                          NocturneTag(
-                            label: formatDueDate(task.dueDate!, dateFormat),
-                            icon: Icons.access_time,
-                            outline: true,
-                            // Neutral, not the Appearance accent — matches
-                            // the Projects folder's own due-date styling.
-                            color: isOverdue
-                                ? Theme.of(context).colorScheme.error
-                                : Theme.of(context).hintColor,
-                          ),
-                      ],
-                    ),
-                  ),
+    // The hover/press highlight wraps the whole row — checkbox, title,
+    // project, priority tag and due tag together — so it spans the entire
+    // available width of the task rather than stopping short at the
+    // checkbox or the tags. The checkbox keeps its own tap target for
+    // toggling; only taps elsewhere on the row open the task.
+    return Builder(
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
+          onTap: () => onOpenTask(task.projectId, task.id, rowContext),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                WobbleCheckbox(
+                  value: task.isChecked,
+                  reduceMotion: reduceMotion,
+                  onChanged: (_) =>
+                      ref.read(tasksProvider.notifier).toggleTask(task.id),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(child: titleAndProject),
+                // ignore: use_null_aware_elements (hive_generator pins analyzer <7, which can't parse `?element`)
+                if (priorityTag != null) priorityTag,
+                if (task.priority != TaskPriority.none)
+                  const SizedBox(width: 6),
+                if (task.dueDate != null)
+                  NocturneTag(
+                    label: formatDueDate(task.dueDate!, dateFormat),
+                    icon: Icons.access_time,
+                    outline: true,
+                    // Neutral, not the Appearance accent — matches the
+                    // Projects folder's own due-date styling.
+                    color: isOverdue
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).hintColor,
+                  ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

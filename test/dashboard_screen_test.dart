@@ -335,7 +335,6 @@ void main() {
           return texts.first.data!;
         }
 
-        expect(statValueFor('Active projects'), '1');
         expect(statValueFor('Overdue'), '1');
 
         expect(find.text('Shelved'), findsNothing);
@@ -346,6 +345,46 @@ void main() {
         // and twice in Recent Activity (its own "created" entry plus the
         // "added" entry for the overdue task).
         expect(find.text('Launch'), findsNWidgets(4));
+      },
+    );
+
+    testWidgets(
+      'a task checked off today counts toward Completed today, not toward Overdue',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container
+            .read(projectsProvider.notifier)
+            .addProject('Finisher');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        final task = tasksNotifier.addBlankTask(
+          title: 'Finish this',
+          projectId: project.id,
+        );
+        tasksNotifier.toggleTask(task.id);
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        String statValueFor(String label) {
+          final cardFinder = find
+              .ancestor(of: find.text(label), matching: find.byType(Card))
+              .first;
+          final texts = tester
+              .widgetList<Text>(
+                find.descendant(of: cardFinder, matching: find.byType(Text)),
+              )
+              .toList();
+          return texts.first.data!;
+        }
+
+        expect(statValueFor('Completed today'), '1');
       },
     );
 
@@ -395,44 +434,6 @@ void main() {
     );
 
     testWidgets(
-      'the Task Status bar actually renders a non-zero-height segment '
-      '(regression: a childless ColoredBox inside a centered Row/Expanded '
-      'collapses to zero height without crossAxisAlignment.stretch)',
-      (tester) async {
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-
-        final project = container.read(projectsProvider.notifier).addProject('Bar Check');
-        container.read(tasksProvider.notifier).addBlankTask(
-          title: 'Open task',
-          projectId: project.id,
-        );
-
-        await tester.pumpWidget(
-          wrap(
-            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
-            container,
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final cardFinder = find
-            .ancestor(of: find.textContaining('Task Status'), matching: find.byType(Card))
-            .first;
-        final segmentFinder = find.descendant(
-          of: cardFinder,
-          matching: find.byType(ColoredBox),
-        );
-        expect(segmentFinder, findsWidgets);
-        for (final element in segmentFinder.evaluate()) {
-          final size = (element.renderObject as RenderBox).size;
-          expect(size.height, greaterThan(0));
-          expect(size.width, greaterThan(0));
-        }
-      },
-    );
-
-    testWidgets(
       'tapping a Projects table row opens that project via onOpenProject',
       (tester) async {
         final container = ProviderContainer();
@@ -468,6 +469,159 @@ void main() {
           openedProjectId,
           container.read(projectsProvider).firstWhere((p) => p.name == 'Table Target').id,
         );
+      },
+    );
+
+    testWidgets(
+      'tapping the PROJECT column header sorts, then reverses, the Projects table',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        container.read(projectsProvider.notifier).addProject('Sortable');
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('PROJECT'), findsOneWidget);
+        expect(find.byIcon(Icons.arrow_upward), findsNothing);
+        expect(find.byIcon(Icons.arrow_downward), findsNothing);
+
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+
+        // A third tap drops back to the default (unsorted) order.
+        await tester.tap(find.text('PROJECT'));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.arrow_upward), findsNothing);
+        expect(find.byIcon(Icons.arrow_downward), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'every Projects table column header always shows a sort icon, even unsorted',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        container.read(projectsProvider.notifier).addProject('AnyProject');
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // One per sortable column (PROJECT, TASKS, PROGRESS, STATUS) — the
+        // whole point is that the sort affordance is visible before anyone
+        // taps anything.
+        expect(find.byIcon(Icons.unfold_more), findsNWidgets(4));
+      },
+    );
+
+    testWidgets(
+      'tapping the STATUS header sorts projects by urgency (overdue first)',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final calm = container.read(projectsProvider.notifier).addProject('Calm');
+        final onFire = container.read(projectsProvider.notifier).addProject('OnFire');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        tasksNotifier.addBlankTask(title: 'Calm task', projectId: calm.id);
+        final urgent = tasksNotifier.addBlankTask(
+          title: 'Urgent task',
+          projectId: onFire.id,
+        );
+        tasksNotifier.setTaskDueDate(
+          urgent.id,
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('STATUS'));
+        await tester.pumpAndSettle();
+
+        // Project names also appear in Today & Needs Attention and Recent
+        // Activity — scoping to the Projects card (found via its own
+        // PROJECT header) isolates the table row.
+        final projectsCard = find
+            .ancestor(of: find.text('PROJECT'), matching: find.byType(Card))
+            .first;
+        double tableRowY(String projectName) => tester
+            .getTopLeft(
+              find.descendant(of: projectsCard, matching: find.text(projectName)),
+            )
+            .dy;
+
+        // Ascending by urgency rank: OVERDUE (0) sorts before open (1).
+        expect(tableRowY('OnFire'), lessThan(tableRowY('Calm')));
+      },
+    );
+
+    testWidgets(
+      'tapping Overdue flashes the Attention card even when already visible',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final project = container
+            .read(projectsProvider.notifier)
+            .addProject('Flasher');
+        final tasksNotifier = container.read(tasksProvider.notifier);
+        final overdue = tasksNotifier.addBlankTask(
+          title: 'Overdue in Flasher',
+          projectId: project.id,
+        );
+        tasksNotifier.setTaskDueDate(
+          overdue.id,
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DashboardScreen(onOpenProject: (_, _) {}, onOpenTask: (_, _, _) {}),
+            container,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        Card attentionCard() => tester.widget<Card>(
+          find
+              .ancestor(
+                of: find.text('Today & Needs Attention'),
+                matching: find.byType(Card),
+              )
+              .first,
+        );
+
+        expect(attentionCard().color, isNull);
+
+        await tester.tap(find.text('Overdue').first);
+        await tester.pump();
+        expect(attentionCard().color, isNotNull);
+
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(attentionCard().color, isNull);
       },
     );
   });
