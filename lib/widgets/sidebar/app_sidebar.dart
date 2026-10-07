@@ -133,6 +133,7 @@ class AppSidebar extends ConsumerWidget {
                         _SidebarSearch(
                           expanded: expanded,
                           onOpenTask: onOpenTask,
+                          onOpenProject: onFavoriteProjectTap,
                         ),
                         const SizedBox(height: 2),
                         _NavRow(
@@ -497,10 +498,18 @@ class _Header extends StatelessWidget {
 /// shows a plain nav row instead — tapping it expands the sidebar so the
 /// field can be used.
 class _SidebarSearch extends ConsumerWidget {
-  const _SidebarSearch({required this.expanded, required this.onOpenTask});
+  const _SidebarSearch({
+    required this.expanded,
+    required this.onOpenTask,
+    required this.onOpenProject,
+  });
 
   final bool expanded;
   final void Function(String? projectId, String taskId) onOpenTask;
+
+  /// Opens a project picked from the inline search field — same "jump to
+  /// this project" behavior as tapping it under Favorites.
+  final ValueChanged<Project> onOpenProject;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -517,20 +526,37 @@ class _SidebarSearch extends ConsumerWidget {
     }
 
     final tasks = ref.watch(tasksProvider);
-    final projectNames = buildProjectNameLookup(ref.watch(projectsProvider));
+    final projects = ref.watch(projectsProvider);
+    final activeProjects = projects.where((p) => !p.archived).toList();
+    final projectNames = buildProjectNameLookup(projects);
 
-    return Autocomplete<Task>(
+    return Autocomplete<_SearchResult>(
       optionsBuilder: (TextEditingValue value) {
         final query = value.text.trim().toLowerCase();
-        if (query.isEmpty) return const Iterable<Task>.empty();
-        return tasks.where(
-          (t) =>
-              t.title.toLowerCase().contains(query) ||
-              (t.notes?.toLowerCase().contains(query) ?? false),
-        );
+        if (query.isEmpty) return const Iterable<_SearchResult>.empty();
+        final matchingProjects = activeProjects
+            .where((p) => p.name.toLowerCase().contains(query))
+            .map(_ProjectResult.new);
+        final matchingTasks = tasks
+            .where(
+              (t) =>
+                  t.title.toLowerCase().contains(query) ||
+                  (t.notes?.toLowerCase().contains(query) ?? false),
+            )
+            .map(_TaskResult.new);
+        // Projects first — there are usually far fewer of them, and
+        // jumping to a project is the coarser, more likely-intended match
+        // for a short query (e.g. the project's own name).
+        return [...matchingProjects, ...matchingTasks];
       },
-      displayStringForOption: (task) => task.title,
-      onSelected: (task) => onOpenTask(task.projectId, task.id),
+      displayStringForOption: (result) => switch (result) {
+        _ProjectResult(:final project) => project.name,
+        _TaskResult(:final task) => task.title,
+      },
+      onSelected: (result) => switch (result) {
+        _ProjectResult(:final project) => onOpenProject(project),
+        _TaskResult(:final task) => onOpenTask(task.projectId, task.id),
+      },
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
         return TextField(
           controller: controller,
@@ -561,23 +587,40 @@ class _SidebarSearch extends ConsumerWidget {
                 shrinkWrap: true,
                 itemCount: results.length,
                 itemBuilder: (context, index) {
-                  final task = results[index];
-                  return ListTile(
-                    dense: true,
-                    title: Text(
-                      task.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: tokens.text),
+                  final result = results[index];
+                  return switch (result) {
+                    _ProjectResult(:final project) => ListTile(
+                      dense: true,
+                      leading: Icon(
+                        Icons.folder,
+                        size: 16,
+                        color: accentPalette[project.colorIndex],
+                      ),
+                      title: Text(
+                        project.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: tokens.text),
+                      ),
+                      onTap: () => onSelected(result),
                     ),
-                    subtitle: Text(
-                      projectNameFor(projectNames, task.projectId),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500),
+                    _TaskResult(:final task) => ListTile(
+                      dense: true,
+                      title: Text(
+                        task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: tokens.text),
+                      ),
+                      subtitle: Text(
+                        projectNameFor(projectNames, task.projectId),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: tokens.neutral500),
+                      ),
+                      onTap: () => onSelected(result),
                     ),
-                    onTap: () => onSelected(task),
-                  );
+                  };
                 },
               ),
             ),
@@ -586,6 +629,21 @@ class _SidebarSearch extends ConsumerWidget {
       },
     );
   }
+}
+
+/// One matched item in the sidebar search — a project (matched by name) or
+/// a task (matched by title/notes), so a single [Autocomplete] can offer
+/// both kinds of result together.
+sealed class _SearchResult {}
+
+class _ProjectResult extends _SearchResult {
+  _ProjectResult(this.project);
+  final Project project;
+}
+
+class _TaskResult extends _SearchResult {
+  _TaskResult(this.task);
+  final Task task;
 }
 
 class _SmallSectionLabel extends StatelessWidget {
