@@ -36,7 +36,7 @@ jobs:
         run: |
           pubspec_version=$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
           semver="${pubspec_version%%+*}"
-          tag="v${semver}-macos.${GITHUB_RUN_NUMBER}"
+          tag="v${semver}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "semver=$semver" >> "$GITHUB_OUTPUT"
 
@@ -57,15 +57,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "ProCheck v${{ steps.version.outputs.semver }} (macOS)"
+          name: "ProCheck v${{ steps.version.outputs.semver }}"
           body: |
             Built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
 
-            Download the zip below, unzip it, and drag `procheck.app` to Applications.
+            **macOS:** download the `procheck-macos-*.zip` below, unzip it, and
+            drag `procheck.app` to Applications. This build is not code-signed
+            or notarized, so macOS Gatekeeper will block it on first launch.
+            Right-click (or Control-click) the app, choose "Open", then confirm
+            "Open" in the dialog that appears — you only need to do this once.
 
-            This build is not code-signed or notarized, so macOS Gatekeeper will
-            block it on first launch. Right-click (or Control-click) the app,
-            choose "Open", then confirm "Open" in the dialog that appears —
-            you only need to do this once.
-          prerelease: true
+            **Windows:** download the `procheck-windows-*.zip` below, unzip it,
+            and run `procheck.exe`.
+          prerelease: false
           files: ${{ steps.package.outputs.zip_name }}

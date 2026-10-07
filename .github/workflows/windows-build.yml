@@ -38,7 +38,7 @@ jobs:
           $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$' | Select-Object -First 1
           $pubspecVersion = $versionLine.Matches[0].Groups[1].Value.Trim()
           $semver = $pubspecVersion.Split('+')[0]
-          $tag = "v$semver-build.$($env:GITHUB_RUN_NUMBER)"
+          $tag = "v$semver"
           echo "tag=$tag" >> $env:GITHUB_OUTPUT
           echo "semver=$semver" >> $env:GITHUB_OUTPUT
 
@@ -64,6 +64,13 @@ jobs:
           body: |
             Built by CI from commit ${{ github.sha }} on `${{ github.ref_name }}`.
 
-            Download the zip below, unzip it, and run `procheck.exe`.
-          prerelease: true
+            **macOS:** download the `procheck-macos-*.zip` below, unzip it, and
+            drag `procheck.app` to Applications. This build is not code-signed
+            or notarized, so macOS Gatekeeper will block it on first launch.
+            Right-click (or Control-click) the app, choose "Open", then confirm
+            "Open" in the dialog that appears — you only need to do this once.
+
+            **Windows:** download the `procheck-windows-*.zip` below, unzip it,
+            and run `procheck.exe`.
+          prerelease: false
           files: ${{ steps.package.outputs.zip_name }}
