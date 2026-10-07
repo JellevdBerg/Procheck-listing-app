@@ -19,7 +19,6 @@ import 'dashboard_screen.dart';
 import 'day_screen.dart';
 import 'project_detail_overlay.dart';
 import 'projects_screen.dart';
-import 'search_screen.dart';
 import 'settings_screen.dart';
 import 'templates_screen.dart';
 import 'today_screen.dart';
@@ -63,6 +62,7 @@ class _AppShellState extends ConsumerState<AppShell>
   String? _detailProjectId;
   Rect? _originRect;
   String? _highlightTaskId;
+  String? _highlightUnfiledTaskId;
   late final AnimationController _morphController = AnimationController(
     duration: const Duration(milliseconds: 320),
     reverseDuration: const Duration(milliseconds: 260),
@@ -96,7 +96,10 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   void _switchScreen(AppScreen screen) {
-    setState(() => _screen = screen);
+    setState(() {
+      _screen = screen;
+      _highlightUnfiledTaskId = null;
+    });
     ref.read(settingsProvider.notifier).recordLastViewedScreen(screen.index);
     if (_detailProjectId != null) _closeProjectDetail();
   }
@@ -173,6 +176,35 @@ class _AppShellState extends ConsumerState<AppShell>
     }
     ref.read(projectsProvider.notifier).touchProject(projectId);
     _openProjectDetail(projectId, originRect: rect, highlightTaskId: taskId);
+  }
+
+  /// The one "open this task" behavior used everywhere a task can be
+  /// tapped outside its own project (Today, Upcoming, Calendar, the
+  /// sidebar search, …): a filed task opens its project, scrolled to and
+  /// highlighting it — card-morphing from [cardContext]'s rect when one is
+  /// given, else just fading in (e.g. from the sidebar, where there's no
+  /// card to morph from). An unfiled task has no project to open, so it
+  /// opens the Projects screen instead, scrolled to and highlighting it in
+  /// the unfiled list there.
+  void _openTask(String? projectId, String taskId, [BuildContext? cardContext]) {
+    if (projectId == null) {
+      _openUnfiledTask(taskId);
+      return;
+    }
+    if (cardContext != null) {
+      _openProjectFromCard(projectId, cardContext, taskId: taskId);
+    } else {
+      ref.read(projectsProvider.notifier).touchProject(projectId);
+      _openProjectDetail(projectId, highlightTaskId: taskId);
+    }
+  }
+
+  void _openUnfiledTask(String taskId) {
+    setState(() {
+      _screen = AppScreen.projects;
+      _highlightUnfiledTaskId = taskId;
+    });
+    if (_detailProjectId != null) _closeProjectDetail();
   }
 
   /// Jumps into the Day view for [day] — used by both the sidebar's mini
@@ -262,6 +294,7 @@ class _AppShellState extends ConsumerState<AppShell>
                 onScreenSelected: _switchScreen,
                 onFavoriteProjectTap: _openFavoriteProject,
                 onDaySelected: _onDaySelected,
+                onOpenTask: (projectId, taskId) => _openTask(projectId, taskId),
                 calendarMonth: _calendarMonth,
                 selectedDay: _selectedDay,
               ),
@@ -350,30 +383,27 @@ class _AppShellState extends ConsumerState<AppShell>
       AppScreen.projects => ProjectsScreen(
         onShowUndo: _showUndo,
         onOpenProject: _openProjectFromCard,
+        highlightTaskId: _highlightUnfiledTaskId,
       ),
-      AppScreen.search => SearchScreen(
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
-      ),
-      AppScreen.today => const TodayScreen(),
-      AppScreen.upcoming => const UpcomingScreen(),
+      AppScreen.today => TodayScreen(onOpenTask: _openTask),
+      AppScreen.upcoming => UpcomingScreen(onOpenTask: _openTask),
       AppScreen.calendar => CalendarScreen(
         onDaySelected: _onDaySelected,
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+        onOpenTask: _openTask,
       ),
-      AppScreen.day => DayScreen(date: _selectedDay ?? DateTime.now()),
+      AppScreen.day => DayScreen(
+        date: _selectedDay ?? DateTime.now(),
+        onOpenTask: _openTask,
+      ),
       AppScreen.templates => const TemplatesScreen(),
       AppScreen.archived => ArchivedScreen(
         onOpenProject: _openProjectFromCard,
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+        onOpenTask: _openTask,
       ),
       AppScreen.settings => const SettingsScreen(),
       AppScreen.dashboard => DashboardScreen(
         onOpenProject: _openProjectFromCard,
-        onOpenTask: (projectId, taskId, cardContext) =>
-            _openProjectFromCard(projectId, cardContext, taskId: taskId),
+        onOpenTask: _openTask,
       ),
     };
   }

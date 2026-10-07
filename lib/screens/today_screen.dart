@@ -14,7 +14,13 @@ bool _isSameDay(DateTime a, DateTime b) =>
 
 /// Every unchecked task due today, across every project (and unfiled).
 class TodayScreen extends ConsumerWidget {
-  const TodayScreen({super.key});
+  const TodayScreen({super.key, required this.onOpenTask});
+
+  /// Opens a tapped task's home — its project, scrolled to and
+  /// highlighting it, or the Projects screen's unfiled list when it has
+  /// no project.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
+  onOpenTask;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -69,6 +75,7 @@ class TodayScreen extends ConsumerWidget {
                     task: task,
                     reduceMotion: reduceMotion,
                     projectName: projectNameFor(projectNames, task.projectId),
+                    onOpenTask: onOpenTask,
                   );
                 },
               ),

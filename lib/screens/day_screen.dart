@@ -28,9 +28,15 @@ const _monthNames = [
 /// Tasks due on [date] — reached by clicking a day in the sidebar's mini
 /// calendar.
 class DayScreen extends ConsumerWidget {
-  const DayScreen({super.key, required this.date});
+  const DayScreen({super.key, required this.date, required this.onOpenTask});
 
   final DateTime date;
+
+  /// Opens a tapped task's home — its project, scrolled to and
+  /// highlighting it, or the Projects screen's unfiled list when it has
+  /// no project.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
+  onOpenTask;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -117,6 +123,7 @@ class DayScreen extends ConsumerWidget {
                       task: task,
                       reduceMotion: reduceMotion,
                       projectName: projectNameFor(projectNames, task.projectId),
+                      onOpenTask: onOpenTask,
                     );
                   },
                 ),

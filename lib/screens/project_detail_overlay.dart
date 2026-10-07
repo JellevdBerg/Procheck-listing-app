@@ -202,9 +202,14 @@ class _ProjectDetailOverlayState extends ConsumerState<ProjectDetailOverlay> {
                                       duration: const Duration(
                                         milliseconds: 300,
                                       ),
-                                      color: highlighted
-                                          ? accentColor.withValues(alpha: 0.16)
-                                          : Colors.transparent,
+                                      decoration: BoxDecoration(
+                                        color: highlighted
+                                            ? accentColor.withValues(alpha: 0.16)
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(
+                                          NocturneRadius.md,
+                                        ),
+                                      ),
                                       child: TaskTile(
                                         task: task,
                                         onDelete: triggerRemoval,

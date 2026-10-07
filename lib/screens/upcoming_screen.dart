@@ -12,7 +12,13 @@ import 'empty_state.dart';
 /// Every unchecked task with a due date strictly after today, soonest
 /// first.
 class UpcomingScreen extends ConsumerWidget {
-  const UpcomingScreen({super.key});
+  const UpcomingScreen({super.key, required this.onOpenTask});
+
+  /// Opens a tapped task's home — its project, scrolled to and
+  /// highlighting it, or the Projects screen's unfiled list when it has
+  /// no project.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
+  onOpenTask;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,6 +79,7 @@ class UpcomingScreen extends ConsumerWidget {
                     task: task,
                     reduceMotion: reduceMotion,
                     projectName: projectNameFor(projectNames, task.projectId),
+                    onOpenTask: onOpenTask,
                   );
                 },
               ),
