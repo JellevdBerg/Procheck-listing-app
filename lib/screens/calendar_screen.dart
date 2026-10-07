@@ -99,9 +99,10 @@ class CalendarScreen extends ConsumerStatefulWidget {
 
   final ValueChanged<DateTime> onDaySelected;
 
-  /// Opens a task's home project, scrolled to and highlighting that task —
-  /// same destination as tapping it from the Dashboard's attention list.
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  /// Opens a task's home — its project, scrolled to and highlighting that
+  /// task (same destination as tapping it from the Dashboard's attention
+  /// list), or the Projects screen's unfiled list when it has no project.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
@@ -209,15 +210,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   /// A task filed under a project opens that project, scrolled to it; an
-  /// unfiled task has no project to open, so it falls back to the Day view
-  /// instead — same as tapping its due date used to do.
+  /// unfiled task opens the Projects screen's unfiled list instead — the
+  /// same standard "open this task" behavior used everywhere else in the
+  /// app.
   void _handleTaskTap(Task task, BuildContext rowContext) {
-    final projectId = task.projectId;
-    if (projectId != null) {
-      widget.onOpenTask(projectId, task.id, rowContext);
-    } else if (task.dueDate != null) {
-      widget.onDaySelected(task.dueDate!);
-    }
+    widget.onOpenTask(task.projectId, task.id, rowContext);
   }
 
   String get _headerLabel {

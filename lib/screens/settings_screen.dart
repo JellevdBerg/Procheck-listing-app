@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -356,16 +356,18 @@ class _BackupCard extends ConsumerWidget {
               icon: Icons.download_outlined,
               onPressed: () => _importBackup(context, ref),
             ),
-            const SizedBox(height: 16.8),
-            const NocturneSectionLabel(
-              'TESTING',
-              padding: EdgeInsets.only(bottom: 8),
-            ),
-            NocturneButton(
-              label: 'Load test data',
-              icon: Icons.science_outlined,
-              onPressed: () => _confirmLoadTestData(context, ref),
-            ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 16.8),
+              const NocturneSectionLabel(
+                'TESTING',
+                padding: EdgeInsets.only(bottom: 8),
+              ),
+              NocturneButton(
+                label: 'Load test data',
+                icon: Icons.science_outlined,
+                onPressed: () => _confirmLoadTestData(context, ref),
+              ),
+            ],
             const SizedBox(height: 16.8),
             const NocturneSectionLabel(
               'DANGER ZONE',

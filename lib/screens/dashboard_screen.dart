@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/progress_history_service.dart';
 import '../models/activity_entry.dart';
 import '../models/project.dart';
 import '../models/task.dart';
@@ -127,8 +128,9 @@ class DashboardScreen extends ConsumerWidget {
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
   /// Like [onOpenProject], but for navigating in from a specific task (the
-  /// Today & Needs Attention list) rather than the project itself.
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  /// Today & Needs Attention list) rather than the project itself. Null
+  /// projectId means an unfiled task.
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
@@ -136,7 +138,6 @@ class DashboardScreen extends ConsumerWidget {
     final projects = ref.watch(projectsProvider);
     final tasks = ref.watch(tasksProvider);
     final now = DateTime.now();
-    final settings = ref.watch(settingsProvider);
 
     final activeProjects = projects.where((p) => !p.archived).toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -158,8 +159,6 @@ class DashboardScreen extends ConsumerWidget {
                 projects: activeProjects,
                 tasks: relevantTasks,
                 now: now,
-                workspaceId: settings.currentWorkspaceId,
-                projectsStatLabel: 'Active projects',
                 emptyProjectsMessage: 'No active projects yet.',
                 onOpenProject: onOpenProject,
                 onOpenTask: onOpenTask,
@@ -253,8 +252,8 @@ class _CardHeader extends StatelessWidget {
 }
 
 /// Everything below the page's own title: the stat row, Today & Needs
-/// Attention, Task Status + Workload, the Projects table, and Recent
-/// Activity — shared between the Dashboard (active projects) and the
+/// Attention, the Projects table, and Recent Activity — shared between
+/// the Dashboard (active projects) and the
 /// Archive screen's mini-dashboard (archived projects), so [projects] and
 /// [tasks] are whatever scope the caller wants ([tasks] should already be
 /// filtered down to those projects' tasks, plus unfiled ones if relevant).
@@ -264,8 +263,6 @@ class ProjectsOverview extends StatelessWidget {
     required this.projects,
     required this.tasks,
     required this.now,
-    required this.workspaceId,
-    required this.projectsStatLabel,
     required this.emptyProjectsMessage,
     required this.onOpenProject,
     required this.onOpenTask,
@@ -275,13 +272,9 @@ class ProjectsOverview extends StatelessWidget {
   final List<Task> tasks;
   final DateTime now;
 
-  /// Keys the overall-progress trend history — see [ProgressHistoryService].
-  final String workspaceId;
-
-  final String projectsStatLabel;
   final String emptyProjectsMessage;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   @override
@@ -313,83 +306,51 @@ class ProjectsOverview extends StatelessWidget {
         .where((t) => t.priority == TaskPriority.high)
         .length;
 
-    final activeBucket = tasks
-        .where((t) => !t.isChecked && t.dueDate == null)
-        .length;
-    final upcomingBucket = tasks.where((t) => isPendingTask(t, now)).length;
     final overdueBucket = overdueTasks.length;
+
+    final completedToday = tasks
+        .where((t) => t.isChecked && t.completedAt != null && _isSameDay(t.completedAt!, now))
+        .length;
 
     final overallProgress = tasks.isEmpty
         ? 0.0
         : completedCount / tasks.length * 100;
-    ProgressHistoryService.instance.recordIfNeeded(workspaceId, overallProgress);
-    final previousProgress = ProgressHistoryService.instance.previousDayPercent(
-      workspaceId,
-    );
-    final progressTrend = previousProgress == null
-        ? null
-        : overallProgress - previousProgress;
 
     final projectById = {for (final project in projects) project.id: project};
     final summaries = computeProjectSummaries(projects, tasks, now);
     final activityFeed = _buildActivityFeed(projects);
+    final attentionKey = GlobalKey<_AttentionCardState>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _StatRow(
-          projectsLabel: projectsStatLabel,
-          projectsCount: projects.length,
           overdueCount: overdueBucket,
           dueThisWeekCount: dueThisWeekTasks.length,
           highPriorityDueThisWeek: highPriorityDueThisWeek,
           overallProgress: overallProgress,
-          progressTrend: progressTrend,
+          completedToday: completedToday,
+          onOverdueTap: overdueBucket == 0
+              ? null
+              : () {
+                  attentionKey.currentState?.flash();
+                  Scrollable.ensureVisible(
+                    attentionKey.currentContext!,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                  );
+                },
         ),
         const SizedBox(height: 22.4),
         _AttentionCard(
+          key: attentionKey,
           tasks: attentionTasks,
           projectById: projectById,
           now: now,
           onOpenTask: onOpenTask,
         ),
         const SizedBox(height: 22.4),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final taskStatus = _TaskStatusCard(
-              active: activeBucket,
-              overdue: overdueBucket,
-              upcoming: upcomingBucket,
-            );
-            final workload = _WorkloadCard(
-              overdueCount: overdueBucket,
-              dueTodayCount: dueTodayTasks.length,
-              dueThisWeekCount: dueThisWeekTasks.length,
-            );
-            if (constraints.maxWidth < 560) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  taskStatus,
-                  const SizedBox(height: 22.4),
-                  workload,
-                ],
-              );
-            }
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: taskStatus),
-                  const SizedBox(width: 11.2),
-                  Expanded(child: workload),
-                ],
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 22.4),
-        _ProjectsTableCard(
+        ProjectsTableCard(
           summaries: summaries,
           emptyMessage: emptyProjectsMessage,
           onOpenProject: onOpenProject,
@@ -417,38 +378,40 @@ class _ActivityFeedItem {
   final Project project;
 }
 
-/// The four top-line stat cards: active/archived project count, overdue,
-/// due this week (+ how many of those are high priority), and overall
-/// completion (+ trend vs. an earlier day, once there's history to compare
-/// against — see [ProgressHistoryService]).
+/// The top-line stat cards: how many were completed today, overdue (tap to
+/// jump to Today & Needs Attention), due this week (+ how many of those are
+/// high priority), and overall completion.
 class _StatRow extends StatelessWidget {
   const _StatRow({
-    required this.projectsLabel,
-    required this.projectsCount,
     required this.overdueCount,
     required this.dueThisWeekCount,
     required this.highPriorityDueThisWeek,
     required this.overallProgress,
-    required this.progressTrend,
+    required this.completedToday,
+    required this.onOverdueTap,
   });
 
-  final String projectsLabel;
-  final int projectsCount;
   final int overdueCount;
   final int dueThisWeekCount;
   final int highPriorityDueThisWeek;
   final double overallProgress;
-  final double? progressTrend;
+  final int completedToday;
+  final VoidCallback? onOverdueTap;
 
   @override
   Widget build(BuildContext context) {
     final cards = [
-      _StatCard(value: '$projectsCount', label: projectsLabel),
+      _StatCard(
+        value: '$completedToday',
+        label: 'Completed today',
+        valueColor: NocturneStatus.done,
+      ),
       _StatCard(
         value: '$overdueCount',
         label: 'Overdue',
         valueColor: NocturnePriority.high,
         labelColor: NocturnePriority.high,
+        onTap: onOverdueTap,
       ),
       _StatCard(
         value: '$dueThisWeekCount',
@@ -460,7 +423,6 @@ class _StatRow extends StatelessWidget {
         value: '${overallProgress.round()}%',
         label: 'Overall progress',
         valueColor: context.nocturneAccent,
-        trend: _trendBadge(progressTrend),
       ),
     ];
 
@@ -479,24 +441,6 @@ class _StatRow extends StatelessWidget {
       },
     );
   }
-
-  Widget? _trendBadge(double? delta) {
-    if (delta == null) return null;
-    final rounded = delta.round();
-    if (rounded == 0) return null;
-    final up = rounded > 0;
-    final color = up ? NocturneStatus.done : NocturnePriority.high;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(up ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: color),
-        Text(
-          '${rounded.abs()}%',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
-        ),
-      ],
-    );
-  }
 }
 
 class _StatCard extends StatelessWidget {
@@ -505,7 +449,7 @@ class _StatCard extends StatelessWidget {
     required this.label,
     this.valueColor,
     this.labelColor,
-    this.trend,
+    this.onTap,
   });
 
   final String value;
@@ -515,7 +459,10 @@ class _StatCard extends StatelessWidget {
   /// Tints the label itself, not just the number above it — left null for
   /// the neutral default.
   final Color? labelColor;
-  final Widget? trend;
+
+  /// When set, this card jumps to the relevant section of the Dashboard
+  /// instead of being purely informational.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -525,49 +472,41 @@ class _StatCard extends StatelessWidget {
     final tint = labelColor == null
         ? null
         : Color.alphaBlend(labelColor!.withValues(alpha: 0.10), tokens.surface);
+    final content = Padding(
+      padding: const EdgeInsets.all(16.8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: valueColor),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: labelColor ?? tokens.neutral400),
+          ),
+        ],
+      ),
+    );
     return Card(
       margin: EdgeInsets.zero,
       color: tint,
-      child: Padding(
-        padding: const EdgeInsets.all(16.8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  value,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(color: valueColor),
-                ),
-                if (trend != null) ...[
-                  const SizedBox(width: 8),
-                  Padding(padding: const EdgeInsets.only(bottom: 4), child: trend),
-                ],
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: labelColor ?? tokens.neutral400),
-            ),
-          ],
-        ),
-      ),
+      child: onTap == null ? content : InkWell(onTap: onTap, child: content),
     );
   }
 }
 
 /// The merged overdue + due-today list, each row opening straight to that
-/// task (scrolled to and highlighted) via [onOpenTask].
-class _AttentionCard extends StatelessWidget {
+/// task (scrolled to and highlighted) via [onOpenTask]. The card itself can
+/// be flashed via [flash] — called from the Overdue stat tile, since
+/// scrolling alone is invisible when this card is already on screen.
+class _AttentionCard extends StatefulWidget {
   const _AttentionCard({
+    super.key,
     required this.tasks,
     required this.projectById,
     required this.now,
@@ -577,7 +516,7 @@ class _AttentionCard extends StatelessWidget {
   final List<Task> tasks;
   final Map<String, Project> projectById;
   final DateTime now;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   /// This card summarizes what needs attention rather than being a full
@@ -589,14 +528,48 @@ class _AttentionCard extends StatelessWidget {
   static const _maxVisibleRows = 20;
 
   @override
+  State<_AttentionCard> createState() => _AttentionCardState();
+}
+
+class _AttentionCardState extends State<_AttentionCard> {
+  bool _flashing = false;
+  Timer? _timer;
+
+  /// Briefly tints the card so a tap that scrolls here still reads as
+  /// having done something, even when the card was already on screen.
+  void flash() {
+    _timer?.cancel();
+    setState(() => _flashing = true);
+    _timer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _flashing = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final visibleTasks = tasks.length > _maxVisibleRows
-        ? tasks.sublist(0, _maxVisibleRows)
+    final tasks = widget.tasks;
+    final projectById = widget.projectById;
+    final now = widget.now;
+    final onOpenTask = widget.onOpenTask;
+    final visibleTasks = tasks.length > _AttentionCard._maxVisibleRows
+        ? tasks.sublist(0, _AttentionCard._maxVisibleRows)
         : tasks;
     final hiddenCount = tasks.length - visibleTasks.length;
+    final tokens = context.nocturne;
+    final tint = _flashing
+        ? Color.alphaBlend(context.nocturneAccent.withValues(alpha: 0.18), tokens.surface)
+        : null;
 
     return Card(
       margin: EdgeInsets.zero,
+      color: tint,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NocturneRadius.md)),
       child: Padding(
         padding: const EdgeInsets.all(16.8),
         child: Column(
@@ -656,7 +629,7 @@ class _AttentionRow extends StatelessWidget {
   final Task task;
   final Project? project;
   final DateTime now;
-  final void Function(String projectId, String taskId, BuildContext rowContext)
+  final void Function(String? projectId, String taskId, BuildContext rowContext)
   onOpenTask;
 
   bool get _isOverdue => !task.dueDate!.isAfter(now);
@@ -681,7 +654,7 @@ class _AttentionRow extends StatelessWidget {
     final project = this.project;
     final statusColor = _isOverdue ? NocturnePriority.high : NocturnePriority.med;
     final content = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
       child: Row(
         children: [
           Container(
@@ -718,224 +691,99 @@ class _AttentionRow extends StatelessWidget {
       ),
     );
 
-    if (project == null) return content;
     return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenTask(project.id, task.id, rowContext),
-        child: content,
-      ),
-    );
-  }
-}
-
-/// A horizontal stacked bar splitting every open task into active (no due
-/// date yet)/overdue/upcoming, with a count legend below — the Dashboard's
-/// answer to "what's the shape of my open work right now."
-class _TaskStatusCard extends StatelessWidget {
-  const _TaskStatusCard({
-    required this.active,
-    required this.overdue,
-    required this.upcoming,
-  });
-
-  final int active;
-  final int overdue;
-  final int upcoming;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    final total = active + overdue + upcoming;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16.8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(icon: Icons.bar_chart, label: 'Task Status · $total open'),
-            const SizedBox(height: 14),
-            _StackedBar(
-              trackColor: tokens.neutral800,
-              segments: [
-                _BarSegment(active, NocturneStatus.done),
-                _BarSegment(overdue, NocturnePriority.high),
-                _BarSegment(upcoming, tokens.neutral500),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                _LegendChip(color: NocturneStatus.done, text: '$active active'),
-                _LegendChip(color: NocturnePriority.high, text: '$overdue overdue'),
-                _LegendChip(color: tokens.neutral500, text: '$upcoming upcoming'),
-              ],
-            ),
-          ],
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
+          onTap: () => onOpenTask(project?.id, task.id, rowContext),
+          child: content,
         ),
       ),
     );
   }
 }
 
-class _BarSegment {
-  const _BarSegment(this.value, this.color);
+/// Which column [ProjectsTableCard] is sorted by — null means the
+/// caller's own default order (overdue-first, then most open work first).
+enum _ProjectSortColumn { name, tasks, progress, status }
 
-  final int value;
-  final Color color;
-}
-
-class _StackedBar extends StatelessWidget {
-  const _StackedBar({required this.segments, required this.trackColor});
-
-  final List<_BarSegment> segments;
-  final Color trackColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final total = segments.fold<int>(0, (sum, s) => sum + s.value);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: SizedBox(
-        height: 8,
-        width: double.infinity,
-        child: total <= 0
-            ? ColoredBox(color: trackColor)
-            : Row(
-                // A childless ColoredBox sizes itself to the smallest box its
-                // constraints allow, and Row's default center alignment gives
-                // its children loose (0..height) cross-axis constraints — so
-                // without `stretch` every segment collapses to zero height.
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final segment in segments)
-                    if (segment.value > 0)
-                      Expanded(
-                        flex: segment.value,
-                        child: ColoredBox(color: segment.color),
-                      ),
-                ],
-              ),
-      ),
-    );
-  }
-}
-
-class _LegendChip extends StatelessWidget {
-  const _LegendChip({required this.color, required this.text});
-
-  final Color color;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(text, style: TextStyle(fontSize: 12, color: tokens.neutral300)),
-      ],
-    );
-  }
-}
-
-class _WorkloadCard extends StatelessWidget {
-  const _WorkloadCard({
-    required this.overdueCount,
-    required this.dueTodayCount,
-    required this.dueThisWeekCount,
-  });
-
-  final int overdueCount;
-  final int dueTodayCount;
-  final int dueThisWeekCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16.8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _CardHeader(icon: Icons.assignment_outlined, label: 'Workload'),
-            const SizedBox(height: 14),
-            _WorkloadRow(
-              label: 'Overdue',
-              value: overdueCount,
-              color: NocturnePriority.high,
-            ),
-            const SizedBox(height: 10),
-            _WorkloadRow(
-              label: 'Due today',
-              value: dueTodayCount,
-              color: NocturnePriority.med,
-            ),
-            const SizedBox(height: 10),
-            _WorkloadRow(
-              label: 'Due this week',
-              value: dueThisWeekCount,
-              color: NocturnePriority.med,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkloadRow extends StatelessWidget {
-  const _WorkloadRow({required this.label, required this.value, required this.color});
-
-  final String label;
-  final int value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.nocturne;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13, color: tokens.neutral300),
-          ),
-        ),
-        Text(
-          '$value',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color),
-        ),
-      ],
-    );
-  }
+/// How urgently a project's [_statusTag] reads, for sorting STATUS the way
+/// it visually ranks: OVERDUE first, then any other open work, then
+/// "No tasks" (covers both no tasks at all and everything already done).
+int _statusRank(ProjectSummary s) {
+  if (s.hasOverdue) return 0;
+  if (s.open > 0) return 1;
+  return 2;
 }
 
 /// The per-project table: how much work is open, the completion bar, and a
-/// status badge — ranked overdue-first, then by how much is left open.
-class _ProjectsTableCard extends StatelessWidget {
-  const _ProjectsTableCard({
+/// status badge — ranked overdue-first, then by how much is left open by
+/// default, or by tapping any column header to sort some other way.
+class ProjectsTableCard extends StatefulWidget {
+  const ProjectsTableCard({
+    super.key,
     required this.summaries,
     required this.emptyMessage,
     required this.onOpenProject,
+    this.trailing,
   });
 
   final List<ProjectSummary> summaries;
   final String emptyMessage;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
 
+  /// An optional extra action rendered at the end of each row (e.g. an
+  /// "Unarchive" button on the Archive screen).
+  final Widget Function(ProjectSummary summary)? trailing;
+
+  @override
+  State<ProjectsTableCard> createState() => _ProjectsTableCardState();
+}
+
+class _ProjectsTableCardState extends State<ProjectsTableCard> {
+  _ProjectSortColumn? _sortColumn;
+  bool _ascending = true;
+
+  /// Tapping an unsorted column sorts it ascending; tapping the already-
+  /// active column flips direction; tapping it again drops back to the
+  /// caller's default order instead of cycling forever.
+  void _tapColumn(_ProjectSortColumn column) {
+    setState(() {
+      if (_sortColumn != column) {
+        _sortColumn = column;
+        _ascending = true;
+      } else if (_ascending) {
+        _ascending = false;
+      } else {
+        _sortColumn = null;
+      }
+    });
+  }
+
+  List<ProjectSummary> get _sortedSummaries {
+    final column = _sortColumn;
+    if (column == null) return widget.summaries;
+    final sorted = [...widget.summaries]
+      ..sort((a, b) => switch (column) {
+        _ProjectSortColumn.name =>
+          a.project.name.toLowerCase().compareTo(b.project.name.toLowerCase()),
+        _ProjectSortColumn.tasks => a.open.compareTo(b.open),
+        _ProjectSortColumn.progress =>
+          (a.progress ?? -1).compareTo(b.progress ?? -1),
+        _ProjectSortColumn.status =>
+          _statusRank(a).compareTo(_statusRank(b)),
+      });
+    return _ascending ? sorted : sorted.reversed.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tokens = context.nocturne;
+    final summaries = _sortedSummaries;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -949,42 +797,53 @@ class _ProjectsTableCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
-                  emptyMessage,
+                  widget.emptyMessage,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               )
             else ...[
-              Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'PROJECT',
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _SortableHeaderCell(
+                        label: 'PROJECT',
+                        active: _sortColumn == _ProjectSortColumn.name,
+                        ascending: _ascending,
+                        onTap: () => _tapColumn(_ProjectSortColumn.name),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'TASKS',
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+                    Expanded(
+                      child: _SortableHeaderCell(
+                        label: 'TASKS',
+                        active: _sortColumn == _ProjectSortColumn.tasks,
+                        ascending: _ascending,
+                        onTap: () => _tapColumn(_ProjectSortColumn.tasks),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'PROGRESS',
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+                    Expanded(
+                      flex: 3,
+                      child: _SortableHeaderCell(
+                        label: 'PROGRESS',
+                        active: _sortColumn == _ProjectSortColumn.progress,
+                        ascending: _ascending,
+                        onTap: () => _tapColumn(_ProjectSortColumn.progress),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'STATUS',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontSize: 11, color: tokens.neutral500, letterSpacing: 0.06),
+                    Expanded(
+                      flex: 2,
+                      child: _SortableHeaderCell(
+                        label: 'STATUS',
+                        active: _sortColumn == _ProjectSortColumn.status,
+                        ascending: _ascending,
+                        onTap: () => _tapColumn(_ProjectSortColumn.status),
+                        alignEnd: true,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
@@ -992,7 +851,11 @@ class _ProjectsTableCard extends StatelessWidget {
               ),
               for (var i = 0; i < summaries.length; i++) ...[
                 if (i > 0) const Divider(height: 1),
-                _ProjectsTableRow(summary: summaries[i], onOpenProject: onOpenProject),
+                _ProjectsTableRow(
+                  summary: summaries[i],
+                  onOpenProject: widget.onOpenProject,
+                  trailing: widget.trailing,
+                ),
               ],
             ],
           ],
@@ -1002,11 +865,83 @@ class _ProjectsTableCard extends StatelessWidget {
   }
 }
 
+/// A column header in [ProjectsTableCard] that sorts the table when tapped,
+/// showing a direction arrow once it's the active sort column.
+class _SortableHeaderCell extends StatelessWidget {
+  const _SortableHeaderCell({
+    required this.label,
+    required this.active,
+    required this.ascending,
+    required this.onTap,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final bool active;
+  final bool ascending;
+  final VoidCallback onTap;
+
+  /// True for the right-aligned STATUS column, so the label+icon hug the
+  /// right edge like the plain text it replaced.
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.nocturne;
+    final color = active ? context.nocturneAccent : tokens.neutral500;
+    // Flexible + ellipsis (rather than Align wrapping a min-size Row) so a
+    // narrow column shrinks the label instead of overflowing the row.
+    final labelText = Flexible(
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          letterSpacing: 0.06,
+          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    );
+    final icon = Icon(
+      active
+          ? (ascending ? Icons.arrow_upward : Icons.arrow_downward)
+          : Icons.unfold_more,
+      size: 13,
+      color: color,
+    );
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(NocturneRadius.md),
+        mouseCursor: SystemMouseCursors.click,
+        hoverColor: context.nocturneHoverColor,
+        splashColor: context.nocturneSplashColor,
+        highlightColor: context.nocturneSplashColor,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            mainAxisAlignment: alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [labelText, const SizedBox(width: 3), icon],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProjectsTableRow extends StatelessWidget {
-  const _ProjectsTableRow({required this.summary, required this.onOpenProject});
+  const _ProjectsTableRow({
+    required this.summary,
+    required this.onOpenProject,
+    this.trailing,
+  });
 
   final ProjectSummary summary;
   final void Function(String projectId, BuildContext rowContext) onOpenProject;
+  final Widget Function(ProjectSummary summary)? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -1016,7 +951,7 @@ class _ProjectsTableRow extends StatelessWidget {
     final progress = summary.progress;
 
     final content = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       child: Row(
         children: [
           Expanded(
@@ -1074,14 +1009,26 @@ class _ProjectsTableRow extends StatelessWidget {
             flex: 2,
             child: Align(alignment: Alignment.centerRight, child: _statusTag(tokens)),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing!(summary),
+          ],
         ],
       ),
     );
 
     return Builder(
-      builder: (rowContext) => InkWell(
-        onTap: () => onOpenProject(project.id, rowContext),
-        child: content,
+      builder: (rowContext) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(NocturneRadius.md),
+          mouseCursor: SystemMouseCursors.click,
+          hoverColor: context.nocturneHoverColor,
+          splashColor: context.nocturneSplashColor,
+          highlightColor: context.nocturneSplashColor,
+          onTap: () => onOpenProject(project.id, rowContext),
+          child: content,
+        ),
       ),
     );
   }
