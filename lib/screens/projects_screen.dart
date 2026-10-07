@@ -56,11 +56,21 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   Timer? _highlightTimer;
   bool _scrolledToHighlight = false;
 
+  String? _expandedTaskId;
+  Timer? _expandTimer;
+
+  /// How long after this screen opens with a [ProjectsScreen.highlightTaskId]
+  /// before that task auto-expands — mirrors [ProjectDetailOverlay]'s own
+  /// delay, giving the scroll-into-view a moment to settle first rather than
+  /// the task popping open instantly underneath it.
+  static const _autoExpandDelay = Duration(milliseconds: 450);
+
   @override
   void initState() {
     super.initState();
     _highlightedTaskId = widget.highlightTaskId;
     _armHighlightTimer();
+    _armExpandTimer();
   }
 
   @override
@@ -72,6 +82,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         _scrolledToHighlight = false;
       });
       _armHighlightTimer();
+      _armExpandTimer();
     }
   }
 
@@ -80,6 +91,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     if (_highlightedTaskId == null) return;
     _highlightTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) setState(() => _highlightedTaskId = null);
+    });
+  }
+
+  void _armExpandTimer() {
+    _expandTimer?.cancel();
+    final taskId = widget.highlightTaskId;
+    if (taskId == null) return;
+    _expandTimer = Timer(_autoExpandDelay, () {
+      if (mounted) setState(() => _expandedTaskId = taskId);
     });
   }
 
@@ -108,6 +128,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     _searchController.dispose();
     _gridScrollController.dispose();
     _highlightTimer?.cancel();
+    _expandTimer?.cancel();
     super.dispose();
   }
 
@@ -271,6 +292,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                         ),
                         autoRemoveWhenChecked: true,
                         reorderIndex: i,
+                        expanded: task.id == _expandedTaskId,
+                        onExpandedChanged: (value) => setState(() {
+                          _expandedTaskId = value ? task.id : null;
+                        }),
                       ),
                     ),
                   );
